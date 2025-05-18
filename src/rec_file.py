@@ -92,7 +92,42 @@ class RecFile:
             print(f"Error: {e}")
 
     def _anonymize_chat(self) -> None:
-        pass
+        anonymized_data = bytearray(self.operations)
+        offset = 0
+
+        while True:
+            offset = self._anonymize_next_chat_message(offset, anonymized_data)
+            if offset < 0:
+                break
+
+        self.operations = anonymized_data
+
+    def _anonymize_next_chat_message(self, pos: int, data: bytearray) -> int:
+        pattern = rb"\x04\x00\x00\x00\xFF\xFF\xFF\xFF\K(?P<length>.)\x00\x00\x00"
+        match = regex.search(pattern, data, pos=pos)
+
+        if match is None:
+            return -1
+
+        match_start, match_end = match.span()
+        length = int.from_bytes(match.group("length"), byteorder="little")
+        chat_string = data[match_end:match_end + length].decode("ascii")
+
+        # Extract player id
+        match = regex.search(r"\"player\"\:(?P<id>\d)", chat_string)
+
+        if match is None:
+            raise Exception(f"Could not extract player id while anonymizing string ({chat_string})")
+
+        player_id = int(match.group("id"))
+
+        # Replace player name in messageAGP part with anonymized name
+        chat_string = regex.sub(r"\"messageAGP\":\"@#\d\d(?:\  <platform_icon_.+>  )?\K(?P<name>\w+)\:", f"player {player_id}:", chat_string)
+        changed_length_bytes = len(chat_string).to_bytes(4, "little")
+
+        data[match_start:match_end + length] = changed_length_bytes + chat_string.encode()
+
+        return match_start + len(chat_string)
 
     def _anonymize_elo(self, num_players: int) -> None:
         # Wild guess for now
@@ -109,7 +144,7 @@ class RecFile:
         # u32 player_id
         # u32 unknown
         # u32 rating
-        base_pos, _ = match.span()
+        base_pos = match.start()
         offset = 3 * 4
         for i in range(num_players):
             block_pos = i * offset + base_pos
@@ -142,7 +177,7 @@ class RecFile:
         target_name_length = len(target_name_bytes)
 
         if match:
-            match_start, _ = match.span()
+            match_start = match.start()
             length_byte = match.group("length")
             length = int.from_bytes(length_byte, byteorder="little")
             original_name_bytes = match.group("name")
@@ -162,7 +197,7 @@ class RecFile:
 
             if match:
                 print(f"Found attributes player string for player: {str(original_name_bytes, encoding="ascii")}")
-                match_start, _ = match.span()
+                match_start = match.start()
                 substitution = (len(target_name_bytes) + 1).to_bytes(2, byteorder="little") + target_name_bytes
                 data[match_start:match_start + length + 2] = substitution
 
@@ -188,7 +223,7 @@ class RecFile:
         if match is None:
             raise Exception("Failed to get player count")
 
-        _, match_end = match.span()
+        match_end = match.end()
         offset = 4 * 3
         position = match_end + offset
         return int.from_bytes(uncompressed_header[position:position + 4], byteorder="little")
