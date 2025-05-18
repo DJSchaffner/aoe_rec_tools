@@ -1,3 +1,4 @@
+import struct
 from typing import Self
 import zlib
 from numpy import uint32
@@ -81,37 +82,54 @@ class RecFile:
             file.write(self.operations)
 
     def anonymize(self) -> None:
-        self._anonymize_players()
-        self._anonymize_chat()
-        self._anonymize_elo()
+        num_players = self._get_player_count()
+
+        try:
+            self._anonymize_players(num_players)
+            self._anonymize_chat()
+            self._anonymize_elo(num_players)
+        except Exception as e:
+            print(f"Error: {e}")
 
     def _anonymize_chat(self) -> None:
         pass
 
-    def _anonymize_elo(self) -> None:
-        # Anonymize Elo (Stored after operations it seems )
-        """
-        00 00 05 00 00 00 0B 02 01 00 00 49 6B 28 00 06 <- 06 Should be the start of post game operation block
-        00 00 00 49 6B 28 00 04 00 00 00 01 00 00 00 01
-        00 00 00 03 00 00 00 01 01 02 00 00 00 00 00 00
-        00 1F 0A 00 00 4A 06 00 00 01 00 00 00 9E 09 00 <- 4A06 is the elo of me (p2)
-        00 54 06 00 00 26 00 00 00 02 00 00 00 02 00 00 <- 5406 is the elo of opponent (p5)
-        00 01 00 00 00 CE A4 59 B1 05 DB 7B 43
-        """
-        return
+    def _anonymize_elo(self, num_players: int) -> None:
+        # Wild guess for now
+        MAX_POSTGAME_SIZE = 255
+        anonymized_data = bytearray(self.operations)
+        pattern = rb"\x06\x00\x00\x00.{1,255}\x02\x00\x00\x00\K\x00\x00\x00\x00"
+        pos = len(self.operations) - MAX_POSTGAME_SIZE
+        match = regex.search(pattern, anonymized_data, pos=pos)
 
-    def _anonymize_players(self) -> None:
-        # Decompress header
+        if match is None:
+            raise Exception("Could not anonymize elo")
+
+        # From this point we seem to have a structure that follows this pattern for each player
+        # u32 player_id
+        # u32 unknown
+        # u32 rating
+        base_pos, _ = match.span()
+        offset = 3 * 4
+        for i in range(num_players):
+            block_pos = i * offset + base_pos
+            player_id, unknown, rating = struct.unpack_from("<III", anonymized_data, block_pos)
+
+            fake_rating = 3000
+            anonymized_data[block_pos:block_pos + offset] = struct.pack("<III", player_id, unknown, fake_rating)
+
+            print(f"Rating for player {player_id + 1}({rating}) set to: {fake_rating}")
+
+        self.operations = anonymized_data
+
+    def _anonymize_players(self, num_players: int) -> None:
         anonymized_data = bytearray(zlib.decompress(self.header, wbits=-15))
-        count = 0
         offset = 0
 
-        while (offset := self._anonymize_next_player(count, offset, anonymized_data)) >= 0:
-            count += 1
-
-            if (count >= 8):
-                print("Error: Tried to anonymize too many players")
-                break
+        for i in range(num_players):
+            offset = self._anonymize_next_player(i, offset, anonymized_data)
+            if offset == -1:
+                raise Exception("Could not anonymize player")
 
         # Recompress and slice off header + checksum
         self.header = zlib.compress(bytes(anonymized_data), level=6)[2:-4]
@@ -152,3 +170,25 @@ class RecFile:
             return profile_start_adjusted + 4
 
         return -1
+
+    def _get_player_count(self) -> int:
+        # To find the player count we use a bit of a shortcut and find the two separators in the lobby settings
+        # At that point the structure is like this, so we can extract the player count
+        #   u32 Separator;
+        #   u32 Separator;
+        #   float speed;
+        #   u32 treaty_length;
+        #   u32 population_limit;
+        #   u32 n_players;
+        uncompressed_header = bytearray(zlib.decompress(self.header, wbits=-15))
+        separator_pattern = b"\xA3\x5F\x02\x00"
+        pattern = separator_pattern + separator_pattern
+        match = regex.search(pattern, uncompressed_header)
+
+        if match is None:
+            raise Exception("Failed to get player count")
+
+        _, match_end = match.span()
+        offset = 4 * 3
+        position = match_end + offset
+        return int.from_bytes(uncompressed_header[position:position + 4], byteorder="little")

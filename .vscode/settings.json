@@ -1,3 +1,10 @@
 {
-  "flake8.args": ["--ignore", "E501"]
+  "flake8.args": [
+    "--ignore",
+    "E501"
+  ],
+  "cSpell.words": [
+    "frombuffer",
+    "POSTGAME"
+  ]
 }

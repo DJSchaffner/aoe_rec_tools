@@ -29,7 +29,7 @@ def main():
         sys.exit()
 
     file = RecFile.parse(rec_file)
-    file.anonymize_players()
+    file.anonymize()
     file.write("out.aoe2record")
 
 
