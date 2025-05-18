@@ -49,16 +49,6 @@ class Meta:
 
 
 @dataclass
-class ByteReplacement:
-    position: int
-    length: int
-    substitution: bytes
-
-    def substitute(self, data: bytes):
-        return data[:self.position] + self.substitution + data[self.position + len(self.substitution):]
-
-
-@dataclass
 class RecFile:
     hlen: uint32
     check: uint32
@@ -90,43 +80,15 @@ class RecFile:
             file.write(self.meta)
             file.write(self.operations)
 
-    def anonymize_players(self) -> None:
-        # Decompress header
-        anonymized_data = bytearray(zlib.decompress(self.header, wbits=-15))
-        profiles: list[tuple] = []
-        replacements: list[ByteReplacement] = []
+    def anonymize(self) -> None:
+        self._anonymize_players()
+        self._anonymize_chat()
+        self._anonymize_elo()
 
-        # Find and anonymize all players
-        pattern = rb"\x60\x0A(?!\x00)\K(?P<length>.)\x00(?P<name>.{0,255}?)\x02\x00\x00\x00(?P<profile_id>.{4})"
-        matches = regex.finditer(pattern, anonymized_data, endpos=int("0x330", 0))
+    def _anonymize_chat(self) -> None:
+        pass
 
-        for i, match in enumerate(matches):
-            match_start, _ = match.span()
-            length_byte = match.group("length")
-            length = int.from_bytes(length_byte, byteorder="little")
-            name = match.group("name")
-            profiles.append((length, name))
-
-            # Calculate name start index inside data_bytes
-            # pattern is: prefix(2 bytes) + length_byte(1 byte) + name(length bytes) + suffix(2 bytes)
-            name_start = match_start + 2
-            profile_start = name_start + length + 4
-
-            replacements.append(ByteReplacement(name_start, length, length * b"*"))
-            replacements.append(ByteReplacement(profile_start, 4, 4 * b"\x00"))
-            print(f"Found player with name: {str(name, encoding="ascii")}")
-
-        # Find and anonymize profile in attributes
-        for length, name in profiles:
-            length_bytes = (length + 1).to_bytes(byteorder="little") + b"\x00"
-            pattern = length_bytes + name
-            matches = regex.finditer(pattern, anonymized_data)
-
-            for match in matches:
-                match_start, _ = match.span()
-                replacements.append(ByteReplacement(match_start + 2, length, length * b"*"))
-                print(f"Found attributes player string for player: {str(name, encoding="ascii")}")
-
+    def _anonymize_elo(self) -> None:
         # Anonymize Elo (Stored after operations it seems )
         """
         00 00 05 00 00 00 0B 02 01 00 00 49 6B 28 00 06 <- 06 Should be the start of post game operation block
@@ -136,11 +98,57 @@ class RecFile:
         00 54 06 00 00 26 00 00 00 02 00 00 00 02 00 00 <- 5406 is the elo of opponent (p5)
         00 01 00 00 00 CE A4 59 B1 05 DB 7B 43
         """
+        return
 
-        # Perform substitutions
-        for replacement in replacements:
-            anonymized_data = replacement.substitute(anonymized_data)
+    def _anonymize_players(self) -> None:
+        # Decompress header
+        anonymized_data = bytearray(zlib.decompress(self.header, wbits=-15))
+        count = 0
+        offset = 0
+
+        while (offset := self._anonymize_next_player(count, offset, anonymized_data)) >= 0:
+            count += 1
+
+            if (count >= 8):
+                print("Error: Tried to anonymize too many players")
+                break
 
         # Recompress and slice off header + checksum
         self.header = zlib.compress(bytes(anonymized_data), level=6)[2:-4]
         self.hlen = len(self.header) + 8
+
+    def _anonymize_next_player(self, id: int, offset: int, data: bytearray) -> int:
+        pattern = rb"\x60\x0A(?!\x00)\K(?P<length>.)\x00(?P<name>.{0,255}?)\x02\x00\x00\x00(?P<profile_id>.{4})"
+        match = regex.search(pattern, data, pos=offset, endpos=int("0x330", 0))
+        target_name_bytes = f"player {id + 1}".encode()
+        target_name_length = len(target_name_bytes)
+
+        if match:
+            match_start, _ = match.span()
+            length_byte = match.group("length")
+            length = int.from_bytes(length_byte, byteorder="little")
+            original_name_bytes = match.group("name")
+            print(f"Found player with name: {str(original_name_bytes, encoding="ascii")}")
+
+            # Calculate name start index inside data_bytes
+            # pattern is: prefix(2 bytes) + length_byte(1 byte) + \x00 + name(length bytes)
+            profile_start_adjusted = match_start + 2 + length + 4 - (length - target_name_length)
+
+            data[match_start:match_start + length + 2] = target_name_length.to_bytes(2, byteorder="little") + target_name_bytes
+            data[profile_start_adjusted:profile_start_adjusted + 4] = 4 * b"\x00"
+
+            # Find and anonymize profile in attributes
+            length_bytes = (length + 1).to_bytes(2, byteorder="little")
+            pattern = length_bytes + original_name_bytes
+            match = regex.search(pattern, data, pos=profile_start_adjusted + 4)
+
+            if match:
+                print(f"Found attributes player string for player: {str(original_name_bytes, encoding="ascii")}")
+                match_start, _ = match.span()
+                substitution = (len(target_name_bytes) + 1).to_bytes(2, byteorder="little") + target_name_bytes
+                data[match_start:match_start + length + 2] = substitution
+
+            # Return match of lobby settings
+            return profile_start_adjusted + 4
+
+        return -1
