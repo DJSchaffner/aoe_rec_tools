@@ -1,8 +1,4 @@
 {
-  "flake8.args": [
-    "--ignore",
-    "E501"
-  ],
   "cSpell.words": [
     "frombuffer",
     "hlen",
