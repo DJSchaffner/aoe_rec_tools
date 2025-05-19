@@ -1,20 +1,19 @@
 import struct
 from typing import Self
 import zlib
-from numpy import uint32
 from dataclasses import dataclass, fields
 import regex
 
 
 @dataclass
 class Meta:
-    checksum_interval: uint32
+    checksum_interval: int
     multiplayer: bool
-    rec_owner: uint32
+    rec_owner: int
     reveal_map: bool
-    use_sequence_numbers: uint32
-    number_of_chapters: uint32
-    aok_or_de: uint32
+    use_sequence_numbers: int
+    number_of_chapters: int
+    aok_or_de: int
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Self:
@@ -31,7 +30,7 @@ class Meta:
         padding_size = 3
 
         for field in fields(cls):
-            if field.type == uint32:
+            if field.type == int:
                 total += 4
             elif field.type == bool:
                 total += 1
@@ -45,10 +44,10 @@ class Meta:
 
 @dataclass
 class RecFile:
-    hlen: uint32
-    check: uint32
+    hlen: int
+    check: int
     header: bytes
-    log_version: uint32
+    log_version: int
     meta: bytes
     operations: bytes
 
