@@ -22,13 +22,7 @@ class Meta:
             raise ValueError("Meta block too short (must be at least 28 bytes)")
 
         return cls(
-            checksum_interval=uint32(int.from_bytes(data[0:4], "little")),
-            multiplayer=bool(data[4]),
-            rec_owner=uint32(int.from_bytes(data[8:12], "little")),
-            reveal_map=bool(data[12]),
-            use_sequence_numbers=uint32(int.from_bytes(data[16:20], "little")),
-            number_of_chapters=uint32(int.from_bytes(data[20:24], "little")),
-            aok_or_de=uint32(int.from_bytes(data[24:28], "little")),
+            *struct.unpack("<I?xxxI?xxxIII", data)
         )
 
     @classmethod
@@ -58,30 +52,42 @@ class RecFile:
     meta: bytes
     operations: bytes
 
-    def parse(file_name: str) -> Self:
+    @classmethod
+    def parse(cls, file_name: str) -> Self:
+        """Parse a RecFile object from a given file name.
+
+        Args:
+            file_name (str): The file name and path if necessary
+
+        Returns:
+            Self: A parsed RecFile object
+        """
         with open(file_name, "rb") as file:
             # Read sections using little endian
-            hlen = uint32(int.from_bytes(file.read(4), "little"))
-            check = uint32(int.from_bytes(file.read(4), "little"))
+            hlen, check = struct.unpack("<II", file.read(8))
             header = file.read(hlen - 8)
-            log_version = uint32(int.from_bytes(file.read(4), "little"))
-
-            meta_len = Meta.byte_length()
-            meta = file.read(meta_len)
+            log_version, = struct.unpack("<I", file.read(4))
+            meta = file.read(Meta.byte_length())
             operations = file.read()
 
         return RecFile(hlen, check, header, log_version, meta, operations)
 
     def write(self, file_name: str) -> None:
+        """Write the content of a RecFile object back to a aoe2 rec file with the given name.
+
+        Args:
+            file_name (str): The output name of the file
+        """
         with open(file_name, "wb") as file:
-            file.write(int(self.hlen).to_bytes(4, "little"))
-            file.write(int(self.check).to_bytes(4, "little"))
+
+            file.write(struct.pack("<II", self.hlen, self.check))
             file.write(self.header)
-            file.write(int(self.log_version).to_bytes(4, "little"))
+            file.write(struct.pack("<I", self.log_version))
             file.write(self.meta)
             file.write(self.operations)
 
     def anonymize(self) -> None:
+        """Fully anonymize player data in the rec file. This includes the player profiles and names, chat messages and elo."""
         num_players = self._get_player_count()
 
         try:
@@ -92,17 +98,32 @@ class RecFile:
             print(f"Error: {e}")
 
     def _anonymize_chat(self) -> None:
+        """Anonymizes the chat operations in the rec files."""
         anonymized_data = bytearray(self.operations)
         offset = 0
 
         while True:
             offset = self._anonymize_next_chat_message(offset, anonymized_data)
+
             if offset < 0:
                 break
 
         self.operations = anonymized_data
 
     def _anonymize_next_chat_message(self, pos: int, data: bytearray) -> int:
+        """Anonymize the next chat message starting from the given position. Anonymization only affects the messages shown in the separate chat window.
+
+        Args:
+            pos (int): The Starting position to find the next chat operation
+            data (bytearray): The data containing the chat operations
+
+        Raises:
+            Exception: When the player id could not be extracted from the chat message
+
+        Returns:
+            int: The End position of the anonymized chat message or -1 if none was found
+        """
+        # Find next chat operation
         pattern = rb"\x04\x00\x00\x00\xFF\xFF\xFF\xFF\K(?P<length>.)\x00\x00\x00"
         match = regex.search(pattern, data, pos=pos)
 
@@ -110,7 +131,7 @@ class RecFile:
             return -1
 
         match_start, match_end = match.span()
-        length = int.from_bytes(match.group("length"), byteorder="little")
+        length, = struct.unpack("<B", match.group("length"))
         chat_string = data[match_end:match_end + length].decode("ascii")
 
         # Extract player id
@@ -119,17 +140,24 @@ class RecFile:
         if match is None:
             raise Exception(f"Could not extract player id while anonymizing string ({chat_string})")
 
-        player_id = int(match.group("id"))
-
         # Replace player name in messageAGP part with anonymized name
+        player_id = int(match.group("id"))
         chat_string = regex.sub(r"\"messageAGP\":\"@#\d\d(?:\  <platform_icon_.+>  )?\K(?P<name>\w+)\:", f"player {player_id}:", chat_string)
-        changed_length_bytes = len(chat_string).to_bytes(4, "little")
+        changed_length_bytes = struct.pack("<I", len(chat_string))
 
         data[match_start:match_end + length] = changed_length_bytes + chat_string.encode()
 
         return match_start + len(chat_string)
 
     def _anonymize_elo(self, num_players: int) -> None:
+        """Anonymize players elo in the rec file. Capture Age displays this data.
+
+        Args:
+            num_players (int): The number of players in the rec file
+
+        Raises:
+            Exception: When the elo block could not be found
+        """
         # Wild guess for now
         MAX_POSTGAME_SIZE = 255
         anonymized_data = bytearray(self.operations)
@@ -152,25 +180,44 @@ class RecFile:
 
             fake_rating = 3000
             anonymized_data[block_pos:block_pos + offset] = struct.pack("<III", player_id, unknown, fake_rating)
-
             print(f"Rating for player {player_id + 1}({rating}) set to: {fake_rating}")
 
         self.operations = anonymized_data
 
     def _anonymize_players(self, num_players: int) -> None:
+        """Anonymize player data in the rec file. This includes the player names and profile id in the lobby settings and attributes of the file header.
+
+        Args:
+            num_players (int): The number of player in the rec file
+
+        Raises:
+            Exception: When there was an error anonymizing a player
+        """
         anonymized_data = bytearray(zlib.decompress(self.header, wbits=-15))
         offset = 0
 
         for i in range(num_players):
             offset = self._anonymize_next_player(i, offset, anonymized_data)
+
             if offset == -1:
                 raise Exception("Could not anonymize player")
 
         # Recompress and slice off header + checksum
-        self.header = zlib.compress(bytes(anonymized_data), level=6)[2:-4]
+        self.header = zlib.compress(bytes(anonymized_data))[2:-4]
         self.hlen = len(self.header) + 8
 
     def _anonymize_next_player(self, id: int, offset: int, data: bytearray) -> int:
+        """Anonymize the next player starting from the given offset in the data array.
+        Anonymization includes player name and profile in the lobby settings and player name in attributes.
+
+        Args:
+            id (int): The player id for the player to be anonymized. Used as replacement name
+            offset (int): The offset to start anonymizing the next player
+            data (bytearray): The data containing player data. Will be modified
+
+        Returns:
+            int: The end position of the anonymized player in the lobby settings or -1 if no player was found
+        """
         pattern = rb"\x60\x0A(?!\x00)\K(?P<length>.)\x00(?P<name>.{0,255}?)\x02\x00\x00\x00(?P<profile_id>.{4})"
         match = regex.search(pattern, data, pos=offset, endpos=int("0x330", 0))
         target_name_bytes = f"player {id + 1}".encode()
@@ -179,7 +226,7 @@ class RecFile:
         if match:
             match_start = match.start()
             length_byte = match.group("length")
-            length = int.from_bytes(length_byte, byteorder="little")
+            length, = struct.unpack("<B", length_byte)
             original_name_bytes = match.group("name")
             print(f"Found player with name: {str(original_name_bytes, encoding="ascii")}")
 
@@ -187,18 +234,18 @@ class RecFile:
             # pattern is: prefix(2 bytes) + length_byte(1 byte) + \x00 + name(length bytes)
             profile_start_adjusted = match_start + 2 + length + 4 - (length - target_name_length)
 
-            data[match_start:match_start + length + 2] = target_name_length.to_bytes(2, byteorder="little") + target_name_bytes
+            data[match_start:match_start + length + 2] = struct.pack("<H", target_name_length) + target_name_bytes
             data[profile_start_adjusted:profile_start_adjusted + 4] = 4 * b"\x00"
 
             # Find and anonymize profile in attributes
-            length_bytes = (length + 1).to_bytes(2, byteorder="little")
+            length_bytes = struct.pack("<H", (length + 1))
             pattern = length_bytes + original_name_bytes
             match = regex.search(pattern, data, pos=profile_start_adjusted + 4)
 
             if match:
                 print(f"Found attributes player string for player: {str(original_name_bytes, encoding="ascii")}")
                 match_start = match.start()
-                substitution = (len(target_name_bytes) + 1).to_bytes(2, byteorder="little") + target_name_bytes
+                substitution = struct.pack("<H", len(target_name_bytes) + 1) + target_name_bytes
                 data[match_start:match_start + length + 2] = substitution
 
             # Return match of lobby settings
@@ -207,6 +254,14 @@ class RecFile:
         return -1
 
     def _get_player_count(self) -> int:
+        """Get the player count of the rec file.
+
+        Raises:
+            Exception: When the player count could not be retrieved
+
+        Returns:
+            int: The player count
+        """
         # To find the player count we use a bit of a shortcut and find the two separators in the lobby settings
         # At that point the structure is like this, so we can extract the player count
         #   u32 Separator;
@@ -224,6 +279,6 @@ class RecFile:
             raise Exception("Failed to get player count")
 
         match_end = match.end()
-        offset = 4 * 3
-        position = match_end + offset
-        return int.from_bytes(uncompressed_header[position:position + 4], byteorder="little")
+        _, _, _, player_count = struct.unpack_from("<fIII", uncompressed_header, match_end)
+
+        return player_count
