@@ -20,9 +20,7 @@ class Meta:
         if len(data) < 28:
             raise ValueError("Meta block too short (must be at least 28 bytes)")
 
-        return cls(
-            *struct.unpack("<I?xxxI?xxxIII", data)
-        )
+        return cls(*struct.unpack("<I?xxxI?xxxIII", data))
 
     @classmethod
     def byte_length(cls) -> int:
@@ -172,13 +170,13 @@ class RecFile:
         # u32 unknown
         # u32 rating
         base_pos = match.start()
-        offset = 3 * 4
+        offset = 12  # 3 * 4
         for i in range(num_players):
             block_pos = i * offset + base_pos
             player_id, unknown, rating = struct.unpack_from("<III", anonymized_data, block_pos)
 
             fake_rating = 3000
-            anonymized_data[block_pos:block_pos + offset] = struct.pack("<III", player_id, unknown, fake_rating)
+            struct.pack_into("<III", anonymized_data, block_pos, player_id, unknown, fake_rating)
             print(f"Rating for player {player_id + 1}({rating}) set to: {fake_rating}")
 
         self.operations = anonymized_data

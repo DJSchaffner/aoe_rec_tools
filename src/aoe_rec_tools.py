@@ -5,9 +5,11 @@ from rec_file import RecFile
 
 
 def print_usage():
-    print("Usage: aoe_rec_tools.py [OPTIONS]\n" +
-          "OPTIONS:\n" +
-          "    -i Input file")
+    print(
+        "Usage: aoe_rec_tools.py [OPTIONS]\n"
+        "OPTIONS:\n"
+        "    -i Input file"
+    )
 
 
 def main():
