@@ -34,8 +34,9 @@ class Meta:
                 total += 1
             else:
                 raise TypeError(f"Unsupported type in Meta: {field.type}")
+
         # Add 3 bytes of padding after each bool
-        total += 2 * padding_size  # for the two 3-byte paddings
+        total += 2 * padding_size
 
         return total
 
