@@ -159,9 +159,11 @@ class RecFile:
         # Wild guess for now
         MAX_POSTGAME_SIZE = 255
         anonymized_data = bytearray(self.operations)
-        pattern = rb"\x06\x00\x00\x00.{1,255}\x02\x00\x00\x00\K\x00\x00\x00\x00"
+        pattern = rb"\x06\x00\x00\x00.{1,255}\x02\x00\x00\x00\K[\x00-\x07]\x00\x00\x00"
+        offset = 12  # 3 * 4
         pos = len(self.operations) - MAX_POSTGAME_SIZE
-        match = regex.search(pattern, anonymized_data, pos=pos)
+        endpos = len(self.operations) - 8 - (num_players * offset)
+        match = regex.search(pattern, anonymized_data, pos=pos, endpos=endpos)
 
         if match is None:
             raise Exception("Could not anonymize elo")
@@ -171,7 +173,6 @@ class RecFile:
         # u32 unknown
         # u32 rating
         base_pos = match.start()
-        offset = 12  # 3 * 4
         for i in range(num_players):
             block_pos = i * offset + base_pos
             player_id, unknown, rating = struct.unpack_from("<III", anonymized_data, block_pos)
