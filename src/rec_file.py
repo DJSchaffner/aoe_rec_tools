@@ -223,10 +223,9 @@ class RecFile:
 
         if match:
             match_start = match.start()
-            length_byte = match.group("length")
-            length, = struct.unpack("<B", length_byte)
+            length, = struct.unpack("<B", match.group("length"))
             original_name_bytes = match.group("name")
-            print(f"Found player with name: {str(original_name_bytes, encoding="ascii")}")
+            print(f"Found player with name: {str(original_name_bytes, encoding="utf-8")}")
 
             # Calculate name start index inside data_bytes
             # pattern is: prefix(2 bytes) + length_byte(1 byte) + \x00 + name(length bytes)
@@ -241,7 +240,7 @@ class RecFile:
             match = regex.search(pattern, data, pos=profile_start_adjusted + 4)
 
             if match:
-                print(f"Found attributes player string for player: {str(original_name_bytes, encoding="ascii")}")
+                print(f"Found attributes player string for player: {str(original_name_bytes, encoding="utf-8")}")
                 match_start = match.start()
                 substitution = struct.pack("<H", len(target_name_bytes) + 1) + target_name_bytes
                 data[match_start:match_start + length + 2] = substitution
@@ -276,7 +275,6 @@ class RecFile:
         if match is None:
             raise Exception("Failed to get player count")
 
-        match_end = match.end()
-        _, _, _, player_count = struct.unpack_from("<fIII", uncompressed_header, match_end)
+        _, _, _, player_count = struct.unpack_from("<fIII", uncompressed_header, match.end())
 
         return player_count
