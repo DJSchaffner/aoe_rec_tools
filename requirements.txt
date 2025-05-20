@@ -1,2 +1,4 @@
 regex
 flake8
+pyinstaller
+click
