@@ -22,7 +22,7 @@ def main(input: str, output: str):
 
     Args:
         input (str): Input file name
-        output_file_name (str): Output file name
+        output (str): Output file name
     """
     file = RecFile.parse(input)
     file.anonymize()
