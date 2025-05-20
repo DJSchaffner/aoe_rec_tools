@@ -216,15 +216,15 @@ class RecFile:
         Returns:
             int: The end position of the anonymized player in the lobby settings or -1 if no player was found
         """
-        pattern = rb"\x60\x0A(?!\x00)\K(?P<length>.)\x00(?P<name>.{0,255}?)\x02\x00\x00\x00(?P<profile_id>.{4})"
+        pattern = rb"\x60\x0A\K(?P<length>[\x01-\xFF])\x00(?P<name>.{0,255}?)\x02\x00\x00\x00(?P<profile_id>.{4})"
         match = regex.search(pattern, data, pos=offset, endpos=int("0x330", 0))
-        target_name_bytes = f"player {id + 1}".encode()
-        target_name_length = len(target_name_bytes)
 
         if match:
             match_start = match.start()
             length, = struct.unpack("<B", match.group("length"))
             original_name_bytes = match.group("name")
+            target_name_bytes = f"player {id + 1}".encode()
+            target_name_length = len(target_name_bytes)
             print(f"Found player with name: {str(original_name_bytes, encoding="utf-8")}")
 
             # Calculate name start index inside data_bytes
