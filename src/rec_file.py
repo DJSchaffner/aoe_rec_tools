@@ -122,14 +122,14 @@ class RecFile:
             int: The End position of the anonymized chat message or -1 if none was found
         """
         # Find next chat operation
-        pattern = rb"\x04\x00\x00\x00\xFF\xFF\xFF\xFF\K(?P<length>.)\x00\x00\x00"
+        pattern = rb"\x04\x00\x00\x00\xFF\xFF\xFF\xFF\K(?P<length>.{2})\x00\x00"
         match = regex.search(pattern, data, pos=pos)
 
         if match is None:
             return -1
 
         match_start, match_end = match.span()
-        length, = struct.unpack("<B", match.group("length"))
+        length, = struct.unpack("<H", match.group("length"))
         chat_string = data[match_end:match_end + length].decode("utf-8")
 
         # Extract player id
