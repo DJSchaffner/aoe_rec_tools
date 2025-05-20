@@ -31,4 +31,4 @@ clean:
 	rm -rf *.pyc __pycache__ build/ dist/
 
 build: clean
-	pyinstaller --noconfirm --name "aoe_rec_tools" src/aoe_rec_tools.py
+	pyinstaller --noconfirm --onefile --name "aoe_rec_tools" src/aoe_rec_tools.py
