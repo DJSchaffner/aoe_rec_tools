@@ -130,7 +130,7 @@ class RecFile:
 
         match_start, match_end = match.span()
         length, = struct.unpack("<B", match.group("length"))
-        chat_string = data[match_end:match_end + length].decode("ascii")
+        chat_string = data[match_end:match_end + length].decode("utf-8")
 
         # Extract player id
         match = regex.search(r"\"player\"\:(?P<id>\d)", chat_string)
