@@ -132,11 +132,11 @@ class Header:
         anonymized_data = bytearray(self.data)
         offset = 0
 
-        for i in range(num_players):
+        for i in range(1, num_players + 1):
             offset = self._anonymize_next_player(i, offset, anonymized_data)
 
             if offset == -1:
-                raise Exception("Could not anonymize player")
+                raise Exception(f"Could not anonymize player {i}")
 
         self.data = bytes(anonymized_data)
 
@@ -160,9 +160,9 @@ class Header:
             match_start = match.start()
             length, = struct.unpack("<B", match.group("length"))
             original_name_bytes = match.group("name")
-            target_name_bytes = f"player {id + 1}".encode()
+            target_name_bytes = f"player {id}".encode()
             target_name_length = len(target_name_bytes)
-            print(f"Found player with name: {str(original_name_bytes, encoding="utf-8")}")
+            print(f"Found player: {str(original_name_bytes, encoding="utf-8")} ({str(target_name_bytes, encoding="utf-8")})")
 
             # Calculate name start index inside data_bytes
             # pattern is: prefix(2 bytes) + length_byte(1 byte) + \x00 + name(length bytes)
@@ -177,7 +177,6 @@ class Header:
             match = regex.search(pattern, data, pos=profile_start_adjusted + 4)
 
             if match:
-                print(f"Found attributes player string for player: {str(original_name_bytes, encoding="utf-8")}")
                 match_start = match.start()
                 substitution = struct.pack("<H", len(target_name_bytes) + 1) + target_name_bytes
                 data[match_start:match_start + length + 2] = substitution
@@ -185,7 +184,7 @@ class Header:
                 # Return match of lobby settings
                 return profile_start_adjusted + 4
 
-            print(f"Did not find player attribute string for player {id}")
+            print(f"Did not find attributes string for player: {id}")
             return -1
 
         print(f"Did not find player {id} in lobby settings")
