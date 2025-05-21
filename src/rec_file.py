@@ -147,12 +147,12 @@ class RecFile:
 
         # Replace player name in messageAGP part with anonymized name
         player_id = int(match.group("id"))
-        changed_chat_string = regex.sub(r"\"messageAGP\":\"@#\d\d(?:\  <platform_icon_.+>  )?\K(?P<name>.+)\: ", f"player {player_id}: ", chat_string)
-        changed_length_bytes = struct.pack("<I", len(changed_chat_string))
+        changed_chat_bytes = regex.sub(r"\"messageAGP\":\"@#\d\d(?:\  <platform_icon_.+>  )?\K(?P<name>.+)\: ", f"player {player_id}: ", chat_string).encode()
+        changed_length_bytes = struct.pack("<I", len(changed_chat_bytes))
 
-        data[match_start:match_end + length] = changed_length_bytes + changed_chat_string.encode()
+        data[match_start:match_end + length] = changed_length_bytes + changed_chat_bytes
 
-        return match_start + len(changed_chat_string)
+        return match_start + len(changed_chat_bytes)
 
     def _anonymize_elo(self, num_players: int) -> None:
         """Anonymize players elo in the rec file. Capture Age displays this data.
