@@ -1,5 +1,5 @@
 import struct
-from typing import Literal, Self
+from typing import Self
 from dataclasses import dataclass
 import regex
 
@@ -75,28 +75,29 @@ class RecFile:
             file.write(self.meta)
             file.write(self.operations)
 
-    def anonymize(self) -> None:
-        """Fully anonymize player data in the rec file. This includes the player profiles and names, chat messages and elo."""
+    def anonymize(self, keep_chat: bool) -> None:
+        """Fully anonymize player data in the rec file. This includes the player profiles and names, chat messages and elo.
+
+        Raises:
+            Exception: When anonymization failed
+        """
         num_players = self.header.get_player_count()
 
-        try:
-            self._anonymize_players(num_players)
-            self._anonymize_chat()
-            self._anonymize_elo(num_players)
-        except Exception as e:
-            print(f"Error: {e}")
+        self._anonymize_players(num_players)
+        self._anonymize_chat(keep_chat)
+        self._anonymize_elo(num_players)
 
     def _anonymize_players(self, num_players: int) -> None:
         """Anonymizes the player names in the rec file."""
         self.header.anonymize_players(num_players)
 
-    def _anonymize_chat(self) -> None:
+    def _anonymize_chat(self, keep_chat: bool) -> None:
         """Anonymizes the chat operations in the rec file."""
         anonymized_data = bytearray(self.operations)
         offset = 0
 
         while True:
-            offset = self._anonymize_next_chat_message(offset, anonymized_data, "remove")
+            offset = self._anonymize_next_chat_message(offset, anonymized_data, keep_chat)
 
             if offset < 0:
                 break
@@ -104,7 +105,7 @@ class RecFile:
         self.operations = anonymized_data
 
     @classmethod
-    def _anonymize_next_chat_message(cls, pos: int, data: bytearray, method: Literal["remove", "keep"]) -> int:
+    def _anonymize_next_chat_message(cls, pos: int, data: bytearray, keep_chat: bool) -> int:
         """Anonymize the next chat message starting from the given position. Anonymization only affects the messages shown in the separate chat window.
 
         Args:
@@ -124,7 +125,7 @@ class RecFile:
         if match is None:
             return -1
 
-        if method == "remove":
+        if keep_chat:
             operation_start = match.start() - 8
             operation_end = match.end() + struct.unpack("<H", match.group("length"))[0]
 
@@ -132,28 +133,25 @@ class RecFile:
 
             return operation_start
 
-        if method == "keep":
-            match_start, match_end = match.span()
-            length, = struct.unpack("<H", match.group("length"))
-            # This can fail because encoding is not fixed it seems
-            chat_string = data[match_end:match_end + length].decode("utf-8")
+        match_start, match_end = match.span()
+        length, = struct.unpack("<H", match.group("length"))
+        # This can fail because encoding is not fixed it seems
+        chat_string = data[match_end:match_end + length].decode("utf-8")
 
-            # Extract player id
-            match = regex.search(r"\"player\"\:(?P<id>\d)", chat_string)
+        # Extract player id
+        match = regex.search(r"\"player\"\:(?P<id>\d)", chat_string)
 
-            if match is None:
-                raise Exception(f"Could not extract player id while anonymizing string ({chat_string})")
+        if match is None:
+            raise Exception(f"Could not extract player id while anonymizing string ({chat_string})")
 
-            # Replace player name in messageAGP part with anonymized name
-            player_id = int(match.group("id"))
-            changed_chat_bytes = regex.sub(r"\"messageAGP\":\"@#\d\d(?:\  <platform_icon_.+>  )?\K(?P<name>.+)\: ", f"player {player_id}: ", chat_string).encode()
-            changed_length_bytes = struct.pack("<I", len(changed_chat_bytes))
+        # Replace player name in messageAGP part with anonymized name
+        player_id = int(match.group("id"))
+        changed_chat_bytes = regex.sub(r"\"messageAGP\":\"@#\d\d(?:\  <platform_icon_.+>  )?\K(?P<name>.+)\: ", f"player {player_id}: ", chat_string).encode()
+        changed_length_bytes = struct.pack("<I", len(changed_chat_bytes))
 
-            data[match_start:match_end + length] = changed_length_bytes + changed_chat_bytes
+        data[match_start:match_end + length] = changed_length_bytes + changed_chat_bytes
 
-            return match_start + len(changed_chat_bytes)
-
-        raise Exception(f"Invalid method {method}")
+        return match_start + len(changed_chat_bytes)
 
     def _anonymize_elo(self, num_players: int) -> None:
         """Anonymize players elo in the rec file. Capture Age displays this data.
