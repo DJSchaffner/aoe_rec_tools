@@ -166,7 +166,7 @@ class RecFile:
         # Wild guess for now
         MAX_POSTGAME_SIZE = 255
         anonymized_data = bytearray(self.operations)
-        pattern = rb"\x06\x00\x00\x00.{1,255}\x02\x00\x00\x00\K[\x00-\x07]\x00\x00\x00"
+        pattern = rb"\x06\x00\x00\x00.{1,255}" + struct.pack("<I", num_players) + rb"\K[\x00-\x07]\x00\x00\x00"
         offset = 12  # 3 * 4
         pos = len(self.operations) - MAX_POSTGAME_SIZE
         endpos = len(self.operations) - 8 - (num_players * offset)
