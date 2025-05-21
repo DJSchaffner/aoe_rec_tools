@@ -154,7 +154,12 @@ class RecFile:
         # Wild guess for now
         MAX_POSTGAME_SIZE = 255
         anonymized_data = bytearray(self.operations)
-        pattern = rb"\x06\x00\x00\x00.{1,255}" + struct.pack("<I", num_players) + rb"\K[\x00-\x07]\x00\x00\x00"
+        # Operation 6 = Postgame. Pattern:
+        # WorldTime(u32, u32),
+        # Leaderboards(u32, u32, {
+        #    u32, u16, u32(num_players), {Players}
+        # }
+        pattern = rb"\x06\x00\x00\x00.{22,255}" + struct.pack("<I", num_players) + rb"\K[\x00-\x07]\x00\x00\x00"
         offset = struct.calcsize("<III")
         pos = len(self.operations) - MAX_POSTGAME_SIZE
         endpos = len(self.operations) - 8 - (num_players * offset)
