@@ -1,9 +1,13 @@
+import logging
 from typing import Self
 from dataclasses import dataclass
 import zlib
 import struct
 
 import regex
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -162,7 +166,7 @@ class Header:
             original_name_bytes = match.group("name")
             target_name_bytes = f"player {id}".encode()
             target_name_length = len(target_name_bytes)
-            print(f"Found player: {str(original_name_bytes, encoding="utf-8")} ({str(target_name_bytes, encoding="utf-8")})")
+            logger.info(f"Found player: {str(original_name_bytes, encoding="utf-8")} ({str(target_name_bytes, encoding="utf-8")})")
 
             # Calculate name start index inside data_bytes
             # pattern is: prefix(2 bytes) + length_byte(1 byte) + \x00 + name(length bytes)
@@ -184,8 +188,8 @@ class Header:
                 # Return match of lobby settings
                 return profile_start_adjusted + 4
 
-            print(f"Did not find attributes string for player: {id}")
+            logger.warning(f"Did not find attributes string for player: {id}")
             return -1
 
-        print(f"Did not find player {id} in lobby settings")
+        logger.warning(f"Did not find player {id} in lobby settings")
         return -1

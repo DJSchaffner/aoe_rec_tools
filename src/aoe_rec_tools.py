@@ -1,3 +1,4 @@
+import logging
 import click
 
 from rec_file import RecFile
@@ -29,19 +30,30 @@ from rec_file import RecFile
     is_flag=True,
     help="Keep system chat in the rec file"
 )
-def main(input: str, output: str, keep_system_chat: bool, keep_player_chat: bool):
+@click.option(
+    "--debug",
+    required=False,
+    is_flag=True,
+    help="Enable debug logging"
+)
+def main(input: str, output: str, keep_system_chat: bool, keep_player_chat: bool, debug: bool):
     """Summary
 
     Args:
         input (str): Input file name
         output (str): Output file name
     """
+    logger = logging.getLogger(__name__)
+    level = logging.DEBUG if debug else logging.INFO
+    logging.basicConfig(level=level, format="%(levelname)s - %(message)s")
+
     try:
         file = RecFile.parse(input)
         file.anonymize(keep_system_chat, keep_player_chat)
         file.write(output)
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error(e)
+        logger.debug("Exception while anonymizing", exc_info=True)
 
 
 if __name__ == "__main__":

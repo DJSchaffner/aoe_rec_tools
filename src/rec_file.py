@@ -1,9 +1,13 @@
+import logging
 import struct
 from typing import Self
 from dataclasses import dataclass
 import regex
 
 from header import Header
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -188,7 +192,6 @@ class RecFile:
             system_match_start, system_match_end = system_match.span()
             replacement = f"player {player_id}".encode()
             new_payload_bytes = payload_bytes[:system_match_start] + replacement + payload_bytes[system_match_end + 1:]
-            print(new_payload_bytes)
 
             # Update length and message
             set_length(len(new_payload_bytes))
@@ -233,6 +236,6 @@ class RecFile:
 
             fake_rating = 3000
             struct.pack_into("<III", anonymized_data, block_pos, player_id, unknown, fake_rating)
-            print(f"Rating for player {player_id + 1}({rating}) set to: {fake_rating}")
+            logger.info(f"Rating for player {player_id + 1}({rating}) set to: {fake_rating}")
 
         self.operations = anonymized_data
