@@ -1,8 +1,9 @@
 import struct
 from typing import Self
-import zlib
 from dataclasses import dataclass, fields
 import regex
+
+from header import Header
 
 
 @dataclass
@@ -45,7 +46,7 @@ class Meta:
 class RecFile:
     hlen: int
     check: int
-    header: bytes
+    header: Header
     log_version: int
     meta: bytes
     operations: bytes
@@ -63,7 +64,7 @@ class RecFile:
         with open(file_name, "rb") as file:
             # Read sections using little endian
             hlen, check = struct.unpack("<II", file.read(8))
-            header = file.read(hlen - 8)
+            header = Header.parse(file.read(hlen - 8), True)
             log_version, = struct.unpack("<I", file.read(4))
             meta = file.read(Meta.byte_length())
             operations = file.read()
@@ -77,16 +78,18 @@ class RecFile:
             file_name (str): The output name of the file
         """
         with open(file_name, "wb") as file:
+            compressed_header = self.header.pack()
+            self.hlen = len(compressed_header) + 8
 
             file.write(struct.pack("<II", self.hlen, self.check))
-            file.write(self.header)
+            file.write(compressed_header)
             file.write(struct.pack("<I", self.log_version))
             file.write(self.meta)
             file.write(self.operations)
 
     def anonymize(self) -> None:
         """Fully anonymize player data in the rec file. This includes the player profiles and names, chat messages and elo."""
-        num_players = self._get_player_count()
+        num_players = self.header.get_player_count()
 
         try:
             self._anonymize_players(num_players)
@@ -95,8 +98,12 @@ class RecFile:
         except Exception as e:
             print(f"Error: {e}")
 
+    def _anonymize_players(self, num_players: int) -> None:
+        """Anonymizes the player names in the rec file."""
+        self.header.anonymize_players(num_players)
+
     def _anonymize_chat(self) -> None:
-        """Anonymizes the chat operations in the rec files."""
+        """Anonymizes the chat operations in the rec file."""
         anonymized_data = bytearray(self.operations)
         offset = 0
 
@@ -182,104 +189,3 @@ class RecFile:
             print(f"Rating for player {player_id + 1}({rating}) set to: {fake_rating}")
 
         self.operations = anonymized_data
-
-    def _anonymize_players(self, num_players: int) -> None:
-        """Anonymize player data in the rec file. This includes the player names and profile id in the lobby settings and attributes of the file header.
-
-        Args:
-            num_players (int): The number of player in the rec file
-
-        Raises:
-            Exception: When there was an error anonymizing a player
-        """
-        anonymized_data = bytearray(zlib.decompress(self.header, wbits=-15))
-        offset = 0
-
-        for i in range(num_players):
-            offset = self._anonymize_next_player(i, offset, anonymized_data)
-
-            if offset == -1:
-                raise Exception("Could not anonymize player")
-
-        # Recompress and slice off header + checksum
-        self.header = zlib.compress(bytes(anonymized_data))[2:-4]
-        self.hlen = len(self.header) + 8
-
-    def _anonymize_next_player(self, id: int, offset: int, data: bytearray) -> int:
-        """Anonymize the next player starting from the given offset in the data array.
-        Anonymization includes player name and profile in the lobby settings and player name in attributes.
-
-        Args:
-            id (int): The player id for the player to be anonymized. Used as replacement name
-            offset (int): The offset to start anonymizing the next player
-            data (bytearray): The data containing player data. Will be modified
-
-        Returns:
-            int: The end position of the anonymized player in the lobby settings or -1 if no player was found
-        """
-        pattern = rb"\x60\x0A\K(?P<length>[\x01-\xFF])\x00(?P<name>.{0,255}?)\x02\x00\x00\x00(?P<profile_id>.{4})"
-        match = regex.search(pattern, data, pos=offset, endpos=int("0x330", 0))
-
-        if match:
-            match_start = match.start()
-            length, = struct.unpack("<B", match.group("length"))
-            original_name_bytes = match.group("name")
-            target_name_bytes = f"player {id + 1}".encode()
-            target_name_length = len(target_name_bytes)
-            print(f"Found player with name: {str(original_name_bytes, encoding="utf-8")}")
-
-            # Calculate name start index inside data_bytes
-            # pattern is: prefix(2 bytes) + length_byte(1 byte) + \x00 + name(length bytes)
-            profile_start_adjusted = match_start + 2 + length + 4 - (length - target_name_length)
-
-            data[match_start:match_start + length + 2] = struct.pack("<H", target_name_length) + target_name_bytes
-            data[profile_start_adjusted:profile_start_adjusted + 4] = 4 * b"\x00"
-
-            # Find and anonymize profile in attributes
-            length_bytes = struct.pack("<H", (length + 1))
-            pattern = regex.escape(length_bytes + original_name_bytes)
-            match = regex.search(pattern, data, pos=profile_start_adjusted + 4)
-
-            if match:
-                print(f"Found attributes player string for player: {str(original_name_bytes, encoding="utf-8")}")
-                match_start = match.start()
-                substitution = struct.pack("<H", len(target_name_bytes) + 1) + target_name_bytes
-                data[match_start:match_start + length + 2] = substitution
-
-                # Return match of lobby settings
-                return profile_start_adjusted + 4
-
-            print(f"Did not find player attribute string for player {id}")
-            return -1
-
-        print(f"Did not find player {id} in lobby settings")
-        return -1
-
-    def _get_player_count(self) -> int:
-        """Get the player count of the rec file.
-
-        Raises:
-            Exception: When the player count could not be retrieved
-
-        Returns:
-            int: The player count
-        """
-        # To find the player count we use a bit of a shortcut and find the two separators in the lobby settings
-        # At that point the structure is like this, so we can extract the player count
-        #   u32 Separator;
-        #   u32 Separator;
-        #   float speed;
-        #   u32 treaty_length;
-        #   u32 population_limit;
-        #   u32 n_players;
-        uncompressed_header = bytearray(zlib.decompress(self.header, wbits=-15))
-        separator_pattern = rb"\xA3\x5F\x02\x00"
-        pattern = separator_pattern + separator_pattern
-        match = regex.search(pattern, uncompressed_header)
-
-        if match is None:
-            raise Exception("Failed to get player count")
-
-        _, _, _, player_count = struct.unpack_from("<fIII", uncompressed_header, match.end())
-
-        return player_count
