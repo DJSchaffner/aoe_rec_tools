@@ -135,6 +135,7 @@ class RecFile:
         if method == "keep":
             match_start, match_end = match.span()
             length, = struct.unpack("<H", match.group("length"))
+            # This can fail because encoding is not fixed it seems
             chat_string = data[match_end:match_end + length].decode("utf-8")
 
             # Extract player id
