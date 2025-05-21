@@ -1,6 +1,6 @@
 import struct
 from typing import Self
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 import regex
 
 from header import Header
@@ -8,6 +8,8 @@ from header import Header
 
 @dataclass
 class Meta:
+    PACK_FORMAT = "<I?xxxI?xxxIII"
+
     checksum_interval: int
     multiplayer: bool
     rec_owner: int
@@ -21,25 +23,11 @@ class Meta:
         if len(data) < 28:
             raise ValueError("Meta block too short (must be at least 28 bytes)")
 
-        return cls(*struct.unpack("<I?xxxI?xxxIII", data))
+        return cls(*struct.unpack(cls.PACK_FORMAT, data))
 
     @classmethod
     def byte_length(cls) -> int:
-        total = 0
-        padding_size = 3
-
-        for field in fields(cls):
-            if field.type == int:
-                total += 4
-            elif field.type == bool:
-                total += 1
-            else:
-                raise TypeError(f"Unsupported type in Meta: {field.type}")
-
-        # Add 3 bytes of padding after each bool
-        total += 2 * padding_size
-
-        return total
+        return struct.calcsize(cls.PACK_FORMAT)
 
 
 @dataclass
@@ -167,7 +155,7 @@ class RecFile:
         MAX_POSTGAME_SIZE = 255
         anonymized_data = bytearray(self.operations)
         pattern = rb"\x06\x00\x00\x00.{1,255}" + struct.pack("<I", num_players) + rb"\K[\x00-\x07]\x00\x00\x00"
-        offset = 12  # 3 * 4
+        offset = struct.calcsize("<III")
         pos = len(self.operations) - MAX_POSTGAME_SIZE
         endpos = len(self.operations) - 8 - (num_players * offset)
         match = regex.search(pattern, anonymized_data, pos=pos, endpos=endpos)

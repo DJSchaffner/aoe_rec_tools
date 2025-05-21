@@ -52,14 +52,14 @@ class Header:
 
             return value if len(value) > 1 else value[0]
 
-        checker = read('<f')
-        version_minor = read('<H')
-        version_major = read('<H')
-        game_version = read('<f')
-        build = read('<I')
-        timestamp = read('<i')
-        version = read('<HH')
-        internal_version = read('<HH')
+        checker = read("<f")
+        version_minor = read("<H")
+        version_major = read("<H")
+        game_version = read("<f")
+        build = read("<I")
+        timestamp = read("<i")
+        version = read("<HH")
+        internal_version = read("<HH")
 
         return cls(
             rec_version,
