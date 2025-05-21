@@ -237,7 +237,7 @@ class RecFile:
 
             # Find and anonymize profile in attributes
             length_bytes = struct.pack("<H", (length + 1))
-            pattern = length_bytes + original_name_bytes
+            pattern = regex.escape(length_bytes + original_name_bytes)
             match = regex.search(pattern, data, pos=profile_start_adjusted + 4)
 
             if match:
@@ -246,9 +246,13 @@ class RecFile:
                 substitution = struct.pack("<H", len(target_name_bytes) + 1) + target_name_bytes
                 data[match_start:match_start + length + 2] = substitution
 
-            # Return match of lobby settings
-            return profile_start_adjusted + 4
+                # Return match of lobby settings
+                return profile_start_adjusted + 4
 
+            print(f"Did not find player attribute string for player {id}")
+            return -1
+
+        print(f"Did not find player {id} in lobby settings")
         return -1
 
     def _get_player_count(self) -> int:
@@ -269,7 +273,7 @@ class RecFile:
         #   u32 population_limit;
         #   u32 n_players;
         uncompressed_header = bytearray(zlib.decompress(self.header, wbits=-15))
-        separator_pattern = b"\xA3\x5F\x02\x00"
+        separator_pattern = rb"\xA3\x5F\x02\x00"
         pattern = separator_pattern + separator_pattern
         match = regex.search(pattern, uncompressed_header)
 
