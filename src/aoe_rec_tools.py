@@ -18,13 +18,18 @@ from rec_file import RecFile
     help="Set output file name"
 )
 @click.option(
-    "--keep-chat", "keep_chat",
+    "--keep-player-chat",
     required=False,
-    type=click.BOOL,
-    default=False,
-    help="Keeps the chat in the rec file. Warning: Might cause issues with certain characters in some languages"
+    is_flag=True,
+    help="Keep player chat in the rec file. Warning: Might cause issues with certain characters in some languages"
 )
-def main(input: str, output: str, keep_chat: bool):
+@click.option(
+    "--keep-system-chat",
+    required=False,
+    is_flag=True,
+    help="Keep system chat in the rec file"
+)
+def main(input: str, output: str, keep_system_chat: bool, keep_player_chat: bool):
     """Summary
 
     Args:
@@ -33,7 +38,7 @@ def main(input: str, output: str, keep_chat: bool):
     """
     try:
         file = RecFile.parse(input)
-        file.anonymize(keep_chat)
+        file.anonymize(keep_system_chat, keep_player_chat)
         file.write(output)
     except Exception as e:
         print(f"Error: {e}")

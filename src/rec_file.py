@@ -75,7 +75,7 @@ class RecFile:
             file.write(self.meta)
             file.write(self.operations)
 
-    def anonymize(self, keep_chat: bool) -> None:
+    def anonymize(self, keep_system_chat: bool, keep_player_chat: bool) -> None:
         """Fully anonymize player data in the rec file. This includes the player profiles and names, chat messages and elo.
 
         Raises:
@@ -84,20 +84,20 @@ class RecFile:
         num_players = self.header.get_player_count()
 
         self._anonymize_players(num_players)
-        self._anonymize_chat(keep_chat)
+        self._anonymize_chat(keep_system_chat, keep_player_chat)
         self._anonymize_elo(num_players)
 
     def _anonymize_players(self, num_players: int) -> None:
         """Anonymizes the player names in the rec file."""
         self.header.anonymize_players(num_players)
 
-    def _anonymize_chat(self, keep_chat: bool) -> None:
+    def _anonymize_chat(self, keep_system_chat: bool, keep_player_chat: bool) -> None:
         """Anonymizes the chat operations in the rec file."""
         anonymized_data = bytearray(self.operations)
         offset = 0
 
         while True:
-            offset = self._anonymize_next_chat_message(offset, anonymized_data, keep_chat)
+            offset = self._anonymize_next_chat_message(offset, anonymized_data, keep_system_chat, keep_player_chat)
 
             if offset < 0:
                 break
@@ -105,12 +105,14 @@ class RecFile:
         self.operations = anonymized_data
 
     @classmethod
-    def _anonymize_next_chat_message(cls, pos: int, data: bytearray, keep_chat: bool) -> int:
+    def _anonymize_next_chat_message(cls, pos: int, data: bytearray, keep_system_chat: bool, keep_player_chat: bool) -> int:
         """Anonymize the next chat message starting from the given position. Anonymization only affects the messages shown in the separate chat window.
 
         Args:
             pos (int): The Starting position to find the next chat operation
             data (bytearray): The data containing the chat operations
+            keep_system_chat (bool): Keep system chat when true. Will also try to fix system chat messages. Otherwise drop it
+            keep_player_chat (bool): Keep player chat when true. Otherwise drop it. Can cause issues with decoding
 
         Raises:
             Exception: When the player id could not be extracted from the chat message
@@ -120,38 +122,79 @@ class RecFile:
         """
         # Find next chat operation
         pattern = rb"\x04\x00\x00\x00\xFF\xFF\xFF\xFF\K(?P<length>.{2})\x00\x00"
-        match = regex.search(pattern, data, pos=pos)
+        operation_match = regex.search(pattern, data, pos=pos)
 
-        if match is None:
+        # Did not find a chat operation
+        if operation_match is None:
             return -1
 
-        if not keep_chat:
-            operation_start = match.start() - 8
-            operation_end = match.end() + struct.unpack("<H", match.group("length"))[0]
+        operation_start = operation_match.start() - 8
+        operation_end = operation_match.end() + struct.unpack("<H", operation_match.group("length"))[0]
+        operation_data = bytes(data[operation_start:operation_end])
+        operation_match_start = operation_match.start()
+        payload_bytes = bytearray(operation_data[12:])
 
+        def drop_operation():
             del data[operation_start:operation_end]
-
             return operation_start
 
-        match_start, match_end = match.span()
-        length, = struct.unpack("<H", match.group("length"))
-        # This can fail because encoding is not fixed it seems
-        chat_string = data[match_end:match_end + length].decode("utf-8")
+        def set_length(length: int):
+            data[operation_match_start:operation_match_start + 4] = struct.pack("<I", length)
+
+        def set_payload(payload: bytes):
+            data[operation_match_start + 4:operation_end] = payload
+
+        # Drop all chat operations
+        if not keep_player_chat and not keep_system_chat:
+            return drop_operation()
 
         # Extract player id
-        match = regex.search(r"\"player\"\:(?P<id>\d)", chat_string)
+        # Find -> "player":?,
+        pattern = rb"\x22\x70\x6C\x61\x79\x65\x72\x22\x3A(?P<id>.)\x2C"
+        player_id_match = regex.search(pattern, payload_bytes)
 
-        if match is None:
-            raise Exception(f"Could not extract player id while anonymizing string ({chat_string})")
+        if player_id_match is None:
+            raise Exception(f"Could not extract player id while anonymizing string ({payload_bytes})")
 
         # Replace player name in messageAGP part with anonymized name
-        player_id = int(match.group("id"))
-        changed_chat_bytes = regex.sub(r"\"messageAGP\":\"@#\d\d(?:\  <platform_icon_.+>  )?\K(?P<name>.+)\: ", f"player {player_id}: ", chat_string).encode()
-        changed_length_bytes = struct.pack("<I", len(changed_chat_bytes))
+        player_id = int(player_id_match.group("id"))
 
-        data[match_start:match_end + length] = changed_length_bytes + changed_chat_bytes
+        # Find -> <player_id,?,0>
+        # We don't want to decode the json to avoid errors with encoding
+        pattern = rb"\x3C\x70\x6C\x61\x79\x65\x72\x5F\x69\x64\x2C(?P<player_id>.)\x2C\x30"
+        system_match = regex.search(pattern, payload_bytes)
+        is_player_message = False
 
-        return match_start + len(changed_chat_bytes)
+        if system_match is None:
+            is_player_message = True
+
+        if ((not is_player_message and not keep_system_chat) or (is_player_message and not keep_player_chat)):
+            return drop_operation()
+
+        # Anonymize player message
+        if is_player_message and keep_player_chat:
+            try:
+                # This can fail because encoding is not fixed it seems
+                json_string = payload_bytes.decode("utf-8")
+            except UnicodeDecodeError:
+                raise Exception("Could not anonymize player chat because decoding failed")
+
+            changed_json_bytes = regex.sub(r"\"messageAGP\":\"@#\d\d(?:\  <platform_icon_.+>  )?\K(?P<name>.+)\: ", f"player {player_id}: ", json_string).encode()
+            set_length(len(changed_json_bytes))
+            set_payload(changed_json_bytes)
+
+        # Fix system message
+        if not is_player_message and keep_system_chat:
+            system_match_start, system_match_end = system_match.span()
+            replacement = f"player {player_id}".encode()
+            new_payload_bytes = payload_bytes[:system_match_start] + replacement + payload_bytes[system_match_end + 1:]
+            print(new_payload_bytes)
+
+            # Update length and message
+            set_length(len(new_payload_bytes))
+            set_payload(new_payload_bytes)
+
+        return operation_start + 1
 
     def _anonymize_elo(self, num_players: int) -> None:
         """Anonymize players elo in the rec file. Capture Age displays this data.
