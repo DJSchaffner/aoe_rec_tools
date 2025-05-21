@@ -125,7 +125,7 @@ class RecFile:
         if match is None:
             return -1
 
-        if keep_chat:
+        if not keep_chat:
             operation_start = match.start() - 8
             operation_end = match.end() + struct.unpack("<H", match.group("length"))[0]
 
