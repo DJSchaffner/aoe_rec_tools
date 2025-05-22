@@ -137,6 +137,7 @@ class RecFile:
         operation_data = bytes(data[operation_start:operation_end])
         operation_match_start = operation_match.start()
         payload_bytes = bytearray(operation_data[12:])
+        player_id = payload_bytes[10] - ord('0')
 
         def drop_operation():
             del data[operation_start:operation_end]
@@ -148,24 +149,12 @@ class RecFile:
         def set_payload(payload: bytes):
             data[operation_match_start + 4:operation_end] = payload
 
-        # Drop all chat operations
-        if not remove_player_chat and not remove_system_chat:
+        # Shortcut for dropping all chat operations
+        if remove_player_chat and remove_system_chat:
             return drop_operation()
 
-        # Extract player id
-        # Find -> "player":?,
-        pattern = rb"\x22\x70\x6C\x61\x79\x65\x72\x22\x3A(?P<id>.)\x2C"
-        player_id_match = regex.search(pattern, payload_bytes)
-
-        if player_id_match is None:
-            raise Exception(f"Could not extract player id while anonymizing string ({payload_bytes})")
-
-        # Replace player name in messageAGP part with anonymized name
-        player_id = int(player_id_match.group("id"))
-
-        # Find -> <player_id,?,0>
-        # We don't want to decode the json to avoid errors with encoding
-        pattern = rb"\x3C\x70\x6C\x61\x79\x65\x72\x5F\x69\x64\x2C(?P<player_id>.)\x2C\x30"
+        # Try to find player substitution string in chat message
+        pattern = rb"<player_id,(?P<player_id>.),0>"
         system_match = regex.search(pattern, payload_bytes)
         is_player_message = False
 
@@ -177,15 +166,10 @@ class RecFile:
 
         # Anonymize player message
         if is_player_message and not remove_player_chat:
-            try:
-                # This can fail because encoding is not fixed it seems
-                json_string = payload_bytes.decode("utf-8")
-            except UnicodeDecodeError:
-                raise Exception("Could not anonymize player chat because decoding failed. Try removing player chat to fix.")
-
-            changed_json_bytes = regex.sub(r"\"messageAGP\":\"@#\d\d(?:\  <platform_icon_.+>  )?\K(?P<name>.+)\: ", f"player {player_id}: ", json_string).encode()
-            set_length(len(changed_json_bytes))
-            set_payload(changed_json_bytes)
+            # Replace player name in messageAGP part with anonymized name
+            changed_payload_bytes = regex.sub(rb"\"messageAGP\":\"@#\d\d(?:\  <platform_icon_.+>  )?\K(?P<name>.+)\: ", f"player {player_id}: ".encode(), payload_bytes)
+            set_length(len(changed_payload_bytes))
+            set_payload(changed_payload_bytes)
 
         # Fix system message
         # It gets the job done, but looks different from a normal message and normally this shouldn't be a problem
