@@ -181,7 +181,7 @@ class RecFile:
                 # This can fail because encoding is not fixed it seems
                 json_string = payload_bytes.decode("utf-8")
             except UnicodeDecodeError:
-                raise Exception("Could not anonymize player chat because decoding failed")
+                raise Exception("Could not anonymize player chat because decoding failed. Try removing player chat to fix.")
 
             changed_json_bytes = regex.sub(r"\"messageAGP\":\"@#\d\d(?:\  <platform_icon_.+>  )?\K(?P<name>.+)\: ", f"player {player_id}: ", json_string).encode()
             set_length(len(changed_json_bytes))

@@ -9,7 +9,7 @@
       "type": "debugpy",
       "request": "launch",
       "program": "src/aoe_rec_tools.py",
-      "args": ["-i", "rec.aoe2record"],
+      "args": ["-i", "test/recs/1v1_default.aoe2record", "--debug"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal"
     }
