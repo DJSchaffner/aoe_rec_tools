@@ -8,7 +8,7 @@ __version__ = "0.1"
 
 
 @click.command()
-@click.version_option()
+@click.version_option(__version__)
 @click.option(
     "-i", "--input",
     required=True,
