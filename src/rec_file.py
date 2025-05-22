@@ -79,7 +79,7 @@ class RecFile:
             file.write(self.meta)
             file.write(self.operations)
 
-    def anonymize(self, keep_system_chat: bool, keep_player_chat: bool) -> None:
+    def anonymize(self, remove_system_chat: bool, remove_player_chat: bool) -> None:
         """Fully anonymize player data in the rec file. This includes the player profiles and names, chat messages and elo.
 
         Raises:
@@ -88,20 +88,20 @@ class RecFile:
         num_players = self.header.get_player_count()
 
         self._anonymize_players(num_players)
-        self._anonymize_chat(keep_system_chat, keep_player_chat)
+        self._anonymize_chat(remove_system_chat, remove_player_chat)
         self._anonymize_elo(num_players)
 
     def _anonymize_players(self, num_players: int) -> None:
         """Anonymizes the player names in the rec file."""
         self.header.anonymize_players(num_players)
 
-    def _anonymize_chat(self, keep_system_chat: bool, keep_player_chat: bool) -> None:
+    def _anonymize_chat(self, remove_system_chat: bool, remove_player_chat: bool) -> None:
         """Anonymizes the chat operations in the rec file."""
         anonymized_data = bytearray(self.operations)
         offset = 0
 
         while True:
-            offset = self._anonymize_next_chat_message(offset, anonymized_data, keep_system_chat, keep_player_chat)
+            offset = self._anonymize_next_chat_message(offset, anonymized_data, remove_system_chat, remove_player_chat)
 
             if offset < 0:
                 break
@@ -109,14 +109,14 @@ class RecFile:
         self.operations = anonymized_data
 
     @classmethod
-    def _anonymize_next_chat_message(cls, pos: int, data: bytearray, keep_system_chat: bool, keep_player_chat: bool) -> int:
+    def _anonymize_next_chat_message(cls, pos: int, data: bytearray, remove_system_chat: bool, remove_player_chat: bool) -> int:
         """Anonymize the next chat message starting from the given position. Anonymization only affects the messages shown in the separate chat window.
 
         Args:
             pos (int): The Starting position to find the next chat operation
             data (bytearray): The data containing the chat operations
-            keep_system_chat (bool): Keep system chat when true. Will also try to fix system chat messages. Otherwise drop it
-            keep_player_chat (bool): Keep player chat when true. Otherwise drop it. Can cause issues with decoding
+            remove_system_chat (bool): Remove system chat when true. Otherwise keep it
+            remove_player_chat (bool): Remove player chat when true. Otherwise keep it. Can cause issues with decoding when not dropping these
 
         Raises:
             Exception: When the player id could not be extracted from the chat message
@@ -149,7 +149,7 @@ class RecFile:
             data[operation_match_start + 4:operation_end] = payload
 
         # Drop all chat operations
-        if not keep_player_chat and not keep_system_chat:
+        if not remove_player_chat and not remove_system_chat:
             return drop_operation()
 
         # Extract player id
@@ -172,11 +172,11 @@ class RecFile:
         if system_match is None:
             is_player_message = True
 
-        if ((not is_player_message and not keep_system_chat) or (is_player_message and not keep_player_chat)):
+        if ((not is_player_message and remove_system_chat) or (is_player_message and remove_player_chat)):
             return drop_operation()
 
         # Anonymize player message
-        if is_player_message and keep_player_chat:
+        if is_player_message and not remove_player_chat:
             try:
                 # This can fail because encoding is not fixed it seems
                 json_string = payload_bytes.decode("utf-8")
@@ -188,7 +188,9 @@ class RecFile:
             set_payload(changed_json_bytes)
 
         # Fix system message
-        if not is_player_message and keep_system_chat:
+        # It gets the job done, but looks different from a normal message and normally this shouldn't be a problem
+        """
+        if not is_player_message and not remove_system_chat:
             system_match_start, system_match_end = system_match.span()
             replacement = f"player {player_id}".encode()
             new_payload_bytes = payload_bytes[:system_match_start] + replacement + payload_bytes[system_match_end + 1:]
@@ -196,6 +198,7 @@ class RecFile:
             # Update length and message
             set_length(len(new_payload_bytes))
             set_payload(new_payload_bytes)
+        """
 
         return operation_start + 1
 

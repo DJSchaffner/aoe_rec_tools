@@ -19,16 +19,16 @@ from rec_file import RecFile
     help="Set output file name"
 )
 @click.option(
-    "--keep-player-chat",
+    "--remove-player-chat",
     required=False,
     is_flag=True,
-    help="Keep player chat in the rec file. Warning: Might cause issues with certain characters in some languages"
+    help="Remove player chat in the rec file. Warning: Might cause issues with certain characters in some languages"
 )
 @click.option(
-    "--keep-system-chat",
+    "--remove-system-chat",
     required=False,
     is_flag=True,
-    help="Keep system chat in the rec file"
+    help="Remove system chat in the rec file"
 )
 @click.option(
     "--debug",
@@ -36,7 +36,7 @@ from rec_file import RecFile
     is_flag=True,
     help="Enable debug logging"
 )
-def main(input: str, output: str, keep_system_chat: bool, keep_player_chat: bool, debug: bool):
+def main(input: str, output: str, remove_system_chat: bool, remove_player_chat: bool, debug: bool):
     """Summary
 
     Args:
@@ -49,7 +49,7 @@ def main(input: str, output: str, keep_system_chat: bool, keep_player_chat: bool
 
     try:
         file = RecFile.parse(input)
-        file.anonymize(keep_system_chat, keep_player_chat)
+        file.anonymize(remove_system_chat, remove_player_chat)
         file.write(output)
     except Exception as e:
         logger.error(e)
