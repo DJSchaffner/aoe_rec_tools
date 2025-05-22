@@ -4,7 +4,11 @@ import click
 from rec_file import RecFile
 
 
+__version__ = "0.1"
+
+
 @click.command()
+@click.version_option()
 @click.option(
     "-i", "--input",
     required=True,
