@@ -53,6 +53,10 @@ def main(input: str, output: str, remove_system_chat: bool, remove_player_chat: 
     Args:
         input (str): Input file name
         output (str): Output file name
+        remove_system_chat (bool): Flag to remove system chat
+        remove_player_chat (bool): Flag to remove player chat
+        debug (bool): Flag for debug output
+        profile (bool): Flag for performance profiling
     """
     logger = logging.getLogger(__name__)
     level = logging.DEBUG if debug else logging.INFO
