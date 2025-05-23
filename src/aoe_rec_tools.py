@@ -1,4 +1,5 @@
 import logging
+import time
 import click
 
 from rec_file import RecFile
@@ -40,7 +41,13 @@ __version__ = "0.1"
     is_flag=True,
     help="Enable debug logging"
 )
-def main(input: str, output: str, remove_system_chat: bool, remove_player_chat: bool, debug: bool):
+@click.option(
+    "--profile",
+    required=False,
+    is_flag=True,
+    help="Print execution time"
+)
+def main(input: str, output: str, remove_system_chat: bool, remove_player_chat: bool, debug: bool, profile: bool):
     """Summary
 
     Args:
@@ -51,6 +58,8 @@ def main(input: str, output: str, remove_system_chat: bool, remove_player_chat: 
     level = logging.DEBUG if debug else logging.INFO
     logging.basicConfig(level=level, format="%(levelname)s - %(message)s")
 
+    start_time = time.perf_counter()
+
     try:
         file = RecFile.parse(input)
         file.anonymize(remove_system_chat, remove_player_chat)
@@ -58,6 +67,11 @@ def main(input: str, output: str, remove_system_chat: bool, remove_player_chat: 
     except Exception as e:
         logger.error(e)
         logger.debug("Exception while anonymizing", exc_info=True)
+
+    if profile:
+        end_time = time.perf_counter()
+        elapsed_ms = (end_time - start_time) * 1000
+        logger.info(f"Execution time: {elapsed_ms:.2f} ms")
 
 
 if __name__ == "__main__":
