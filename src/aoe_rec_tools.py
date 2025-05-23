@@ -56,7 +56,7 @@ def main(input: str, output: str, remove_system_chat: bool, remove_player_chat: 
     """
     logger = logging.getLogger(__name__)
     level = logging.DEBUG if debug else logging.INFO
-    logging.basicConfig(level=level, format="%(levelname)s - %(message)s")
+    logging.basicConfig(level=level, format="%(message)s")
 
     start_time = time.perf_counter()
 
