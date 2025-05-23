@@ -27,7 +27,7 @@ __version__ = "0.1"
     "--remove-player-chat",
     required=False,
     is_flag=True,
-    help="Remove player chat in the rec file. Warning: Might cause issues with certain characters in some languages"
+    help="Remove player chat in the rec file"
 )
 @click.option(
     "--remove-system-chat",

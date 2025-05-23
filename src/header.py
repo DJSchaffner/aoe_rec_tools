@@ -109,7 +109,7 @@ class Header:
         #   u32 treaty_length;
         #   u32 population_limit;
         #   u32 n_players;
-        separator_pattern = rb"\xA3\x5F\x02\x00"
+        separator_pattern = b"\xA3\x5F\x02\x00"
         pattern = separator_pattern + separator_pattern
         match = regex.search(pattern, self.data)
 

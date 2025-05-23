@@ -116,7 +116,7 @@ class RecFile:
             pos (int): The Starting position to find the next chat operation
             data (bytearray): The data containing the chat operations
             remove_system_chat (bool): Remove system chat when true. Otherwise keep it
-            remove_player_chat (bool): Remove player chat when true. Otherwise keep it. Can cause issues with decoding when not dropping these
+            remove_player_chat (bool): Remove player chat when true. Otherwise keep it
 
         Raises:
             Exception: When the player id could not be extracted from the chat message
