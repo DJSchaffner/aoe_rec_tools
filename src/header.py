@@ -16,7 +16,6 @@ class Header:
     checker: float  # f32
     version_minor: int  # u16
     version_major: int  # u16
-    game_version: float  # f32
     build: int  # u32
     timestamp: int  # s32
     version: tuple[int, int]  # u16[2]
@@ -45,8 +44,8 @@ class Header:
             data = zlib.decompress(data, wbits=-15)
 
         null_pos = data.find(b"\x00")
-        rec_version = data[:null_pos]
-        offset = null_pos
+        offset = null_pos + 1
+        rec_version = data[:offset]
 
         def read(fmt: str):
             nonlocal offset
@@ -59,7 +58,6 @@ class Header:
         checker = read("<f")
         version_minor = read("<H")
         version_major = read("<H")
-        game_version = read("<f")
         build = read("<I")
         timestamp = read("<i")
         version = read("<HH")
@@ -70,7 +68,6 @@ class Header:
             checker,
             version_minor,
             version_major,
-            game_version,
             build,
             timestamp,
             version,
@@ -89,7 +86,6 @@ class Header:
             struct.pack("<f", self.checker),
             struct.pack("<H", self.version_minor),
             struct.pack("<H", self.version_major),
-            struct.pack("<f", self.game_version),
             struct.pack("<I", self.build),
             struct.pack("<i", self.timestamp),
             struct.pack("<HH", *self.version),
