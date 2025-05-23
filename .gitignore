@@ -80,3 +80,6 @@ dmypy.json
 
 # PyPI configuration file
 .pypirc
+
+# Custom
+*.hexpat
