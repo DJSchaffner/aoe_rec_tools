@@ -11,7 +11,7 @@ A collection of tools for manipulating recorded games of Age of Empires 2 Defini
 
 ## FAQ
 
-Q: **How do I use this?**
+Q: **How do I use this?**  
 A: Launch the executable (`aoe_rec_tools.exe`) file from the command line and pass in parameters depending on what you need. Pass in `--help` for help
 
 ***
