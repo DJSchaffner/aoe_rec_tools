@@ -1,8 +1,9 @@
 # Variables
 VENV=.venv
-PYTHON=$(VENV)/Scripts/python
-PIP=$(VENV)/Scripts/pip
-FLAKE8=$(VENV)/Scripts/flake8
+SCRIPTS=$(VENV)/$(shell if [ -f .venv/bin/pip ]; then echo bin; else echo Scripts; fi)
+PYTHON=$(SCRIPTS)/python
+PIP=$(SCRIPTS)/pip
+FLAKE8=$(SCRIPTS)/flake8
 
 # Default target
 .PHONY: all help venv install lint test clean build
@@ -19,6 +20,7 @@ help:
 	@echo   make build     - Build into standalone executable
 
 venv:
+	python -m pip install virtualenv
 	python -m venv $(VENV)
 
 install:
