@@ -1,8 +1,9 @@
 # Variables
 VENV=.venv
-PYTHON=$(VENV)/Scripts/python.exe
-PIP=$(VENV)/Scripts/pip.exe
-ACTIVATE=$(VENV)/Scripts/activate.bat
+SCRIPTS=$(VENV)/$(shell if [ -f .venv/bin/pip ]; then echo bin; else echo Scripts; fi)
+PYTHON=$(SCRIPTS)/python
+PIP=$(SCRIPTS)/pip
+FLAKE8=$(SCRIPTS)/flake8
 
 # Default target
 .PHONY: all help venv install lint test clean build
@@ -19,19 +20,21 @@ help:
 	@echo   make build     - Build into standalone executable
 
 venv:
+	python -m pip install virtualenv
 	python -m venv $(VENV)
 
 install:
-	$(ACTIVATE); $(PIP) install -r requirements.txt
+	$(PIP) install -r requirements.txt
 
 lint:
-	$(ACTIVATE); $(VENV)/Scripts/flake8 src/
+	$(FLAKE8) src/
 
 test:
-	$(ACTIVATE); $(PYTHON) -m unittest discover test -p "*_tests.py"
+	$(PYTHON) -m unittest discover test -p "*_tests.py"
 
 clean:
 	rm -rf *.pyc __pycache__ build/ dist/
 
 build: clean
-	$(ACTIVATE); pyinstaller --noconfirm --onefile --name "aoe_rec_tools" src/aoe_rec_tools.py
+	$(PYTHON) -m pip install pyinstaller
+	$(PYTHON) -m PyInstaller --noconfirm --onefile --name "aoe_rec_tools" src/aoe_rec_tools.py
