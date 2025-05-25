@@ -5,10 +5,6 @@
 
 A collection of tools for manipulating recorded games of Age of Empires 2 Definitive Edition.
 
-## Features
-
-- Anonymizing player data in a rec file (Player names, Elo, Chat messages)
-
 ## FAQ
 
 Q: **How do I use this?**
