@@ -83,3 +83,4 @@ dmypy.json
 
 # Custom
 *.hexpat
+out.aoe2record
