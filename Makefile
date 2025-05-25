@@ -20,19 +20,18 @@ help:
 
 venv:
 	python -m venv $(VENV)
-	$(ACTIVATE)
 
 install:
-	$(PIP) install -r requirements.txt
+	$(ACTIVATE); $(PIP) install -r requirements.txt
 
 lint:
-	$(VENV)/Scripts/flake8 src/
+	$(ACTIVATE); $(VENV)/Scripts/flake8 src/
 
 test:
-	$(PYTHON) -m unittest discover test -p "*_tests.py"
+	$(ACTIVATE); $(PYTHON) -m unittest discover test -p "*_tests.py"
 
 clean:
 	rm -rf *.pyc __pycache__ build/ dist/
 
 build: clean
-	pyinstaller --noconfirm --onefile --name "aoe_rec_tools" src/aoe_rec_tools.py
+	$(ACTIVATE); pyinstaller --noconfirm --onefile --name "aoe_rec_tools" src/aoe_rec_tools.py
