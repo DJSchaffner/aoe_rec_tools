@@ -9,7 +9,7 @@
       "type": "debugpy",
       "request": "launch",
       "program": "src/aoe_rec_tools.py",
-      "args": ["-i", "test/files/1v1_default.aoe2record", "--debug"],
+      "args": ["-i", "test/files/tg_unicode_chat.aoe2record", "--debug", "--profile"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal"
     }
