@@ -14,50 +14,41 @@ __version__ = "0.1"
     "-i", "--input",
     required=True,
     type=click.Path(exists=True, readable=True),
-    help="Set input file name"
+    help="Set input file."
 )
 @click.option(
     "-o", "--output",
     required=False,
     type=click.Path(exists=False),
     default="out.aoe2record",
-    help="Set output file name"
+    help="Set output file."
 )
 @click.option(
     "--remove-player-chat",
     required=False,
     is_flag=True,
-    help="Remove player chat in the rec file"
+    help="Remove player chat from the rec file."
 )
 @click.option(
     "--remove-system-chat",
     required=False,
     is_flag=True,
-    help="Remove system chat in the rec file"
+    help="Remove system chat from the rec file."
 )
 @click.option(
     "--debug",
     required=False,
     is_flag=True,
-    help="Enable debug logging"
+    help="Enable debug logging."
 )
 @click.option(
     "--profile",
     required=False,
     is_flag=True,
-    help="Print execution time"
+    help="Print execution time."
 )
 def main(input: str, output: str, remove_system_chat: bool, remove_player_chat: bool, debug: bool, profile: bool):
-    """Summary
-
-    Args:
-        input (str): Input file name
-        output (str): Output file name
-        remove_system_chat (bool): Flag to remove system chat
-        remove_player_chat (bool): Flag to remove player chat
-        debug (bool): Flag for debug output
-        profile (bool): Flag for performance profiling
-    """
+    """A collection of tools for manipulating recorded games of Age of Empires 2 Definitive Edition. Currently only supports anonymizing player names and elo."""
     logger = logging.getLogger(__name__)
     level = logging.DEBUG if debug else logging.INFO
     logging.basicConfig(level=level, format="%(message)s")
