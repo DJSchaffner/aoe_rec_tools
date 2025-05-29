@@ -1,11 +1,12 @@
 import logging
 import struct
 from typing import Self
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 import regex
 
 from errors import AnonymizationError
 from header import Header
+from operations import Operation
 
 
 logger = logging.getLogger(__name__)
@@ -22,6 +23,9 @@ class Meta:
     use_sequence_numbers: int
     number_of_chapters: int
     aok_or_de: int
+
+    def pack(self) -> bytes:
+        return struct.pack(self.PACK_FORMAT, *[getattr(self, field.name) for field in fields(self)])
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Self:
@@ -45,8 +49,8 @@ class RecFile:
     check: int
     header: Header
     log_version: int
-    meta: bytes
-    operations: bytes
+    meta: Meta
+    operations: list[Operation]
 
     @classmethod
     def parse(cls, file_name: str) -> Self:
@@ -63,8 +67,8 @@ class RecFile:
             header_length, check = struct.unpack("<II", file.read(8))
             header = Header.parse(file.read(header_length - 8), True)
             log_version, = struct.unpack("<I", file.read(4))
-            meta = file.read(Meta.byte_length())
-            operations = file.read()
+            meta = Meta.from_bytes(file.read(Meta.byte_length()))
+            operations = Operation.parse_operations(file.read())
 
         return RecFile(header_length, check, header, log_version, meta, operations)
 
@@ -81,8 +85,8 @@ class RecFile:
             file.write(struct.pack("<II", self.header_length, self.check))
             file.write(compressed_header)
             file.write(struct.pack("<I", self.log_version))
-            file.write(self.meta)
-            file.write(self.operations)
+            file.write(self.meta.pack())
+            file.write(b"".join([x.pack() for x in self.operations]))
 
     def anonymize(self, remove_system_chat: bool, remove_player_chat: bool) -> None:
         """Fully anonymize player data in the rec file. This includes the player profiles and names, chat messages and elo.
@@ -102,16 +106,7 @@ class RecFile:
 
     def _anonymize_chat(self, remove_system_chat: bool, remove_player_chat: bool) -> None:
         """Anonymizes the chat operations in the rec file."""
-        anonymized_data = bytearray(self.operations)
-        offset = 0
-
-        while True:
-            offset = self._anonymize_next_chat_message(offset, anonymized_data, remove_system_chat, remove_player_chat)
-
-            if offset < 0:
-                break
-
-        self.operations = anonymized_data
+        pass
 
     @classmethod
     def _anonymize_next_chat_message(cls, pos: int, data: bytearray, remove_system_chat: bool, remove_player_chat: bool) -> int:
@@ -198,33 +193,34 @@ class RecFile:
         Raises:
             Exception: When the elo block could not be found
         """
+
         # Operation 6 = Postgame. Pattern:
         # WorldTime(u32, u32),
         # Leaderboards(u32, u32, {
         #    u32, u16, u32(num_players), {Players}
         # }
-        pattern = rb"\x06\x00\x00\x00.{22,255}" + struct.pack("<I", num_players) + rb"\K[\x00-\x07]\x00\x00\x00"
+        postgame_operation = self.operations[-1]
+        data = bytearray(postgame_operation.data)
+        pattern = struct.pack("<I", num_players) + rb"\K[\x00-\x07]\x00\x00\x00"
         offset = struct.calcsize("<III")
-        pos = len(self.operations) - 255  # 255 is a wild guess for max size
-        endpos = len(self.operations) - 8 - (num_players * offset)
+        endpos = len(data) - 8 - (num_players * offset)
 
-        anonymized_data = bytearray(self.operations)
-        match = regex.search(pattern, anonymized_data, pos=pos, endpos=endpos)
+        match = regex.search(pattern, data, endpos=endpos)
 
         if match is None:
             raise AnonymizationError("Could not anonymize elo")
 
         # From this point we seem to have a structure that follows this pattern for each player
         # u32 player_id
-        # u32 unknown
+        # u32 rank
         # u32 rating
         base_pos = match.start()
         for i in range(num_players):
             block_pos = i * offset + base_pos
-            player_id, unknown, rating = struct.unpack_from("<III", anonymized_data, block_pos)
+            player_id, unknown, rating = struct.unpack_from("<III", data, block_pos)
 
             fake_rating = 3000
-            struct.pack_into("<III", anonymized_data, block_pos, player_id, unknown, fake_rating)
+            struct.pack_into("<III", data, block_pos, player_id, unknown, fake_rating)
             logger.info(f"Rating for player {player_id + 1}({rating}) set to: {fake_rating}")
 
-        self.operations = anonymized_data
+        postgame_operation.data = data
