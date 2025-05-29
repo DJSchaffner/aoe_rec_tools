@@ -4,6 +4,7 @@ from typing import Self
 from dataclasses import dataclass
 import regex
 
+from errors import AnonymizationError
 from header import Header
 
 
@@ -24,10 +25,10 @@ class Meta:
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Self:
-        if len(data) < 28:
+        if len(data) < struct.calcsize(cls.PACK_FORMAT):
             raise ValueError("Meta block too short (must be at least 28 bytes)")
 
-        return cls(*struct.unpack(cls.PACK_FORMAT, data))
+        return cls(*struct.unpack(cls.PACK_FORMAT, data[:struct.calcsize(cls.PACK_FORMAT)]))
 
     @classmethod
     def byte_length(cls) -> int:
@@ -36,7 +37,11 @@ class Meta:
 
 @dataclass
 class RecFile:
-    hlen: int
+    CHAT_OPERATION_PATTERN = regex.compile(rb"\x04\x00\x00\x00\xFF\xFF\xFF\xFF\K(?P<length>.{2})\x00\x00")
+    SYSTEM_CHAT_PATTERN = regex.compile(rb"<player_id,(?P<player_id>.),0>")
+    CHAT_MESSAGE_PATTERN = regex.compile(rb"\"messageAGP\":\"@#\d\d(?:\  <platform_icon_.+>  )?\K(?P<name>.+)\: ")
+
+    header_length: int
     check: int
     header: Header
     log_version: int
@@ -55,13 +60,13 @@ class RecFile:
         """
         with open(file_name, "rb") as file:
             # Read sections using little endian
-            hlen, check = struct.unpack("<II", file.read(8))
-            header = Header.parse(file.read(hlen - 8), True)
+            header_length, check = struct.unpack("<II", file.read(8))
+            header = Header.parse(file.read(header_length - 8), True)
             log_version, = struct.unpack("<I", file.read(4))
             meta = file.read(Meta.byte_length())
             operations = file.read()
 
-        return RecFile(hlen, check, header, log_version, meta, operations)
+        return RecFile(header_length, check, header, log_version, meta, operations)
 
     def write(self, file_name: str) -> None:
         """Write the content of a RecFile object back to a aoe2 rec file with the given name.
@@ -71,9 +76,9 @@ class RecFile:
         """
         with open(file_name, "wb") as file:
             compressed_header = self.header.pack()
-            self.hlen = len(compressed_header) + 8
+            self.header_length = len(compressed_header) + 8
 
-            file.write(struct.pack("<II", self.hlen, self.check))
+            file.write(struct.pack("<II", self.header_length, self.check))
             file.write(compressed_header)
             file.write(struct.pack("<I", self.log_version))
             file.write(self.meta)
@@ -125,8 +130,7 @@ class RecFile:
             int: The End position of the anonymized chat message or -1 if none was found
         """
         # Find next chat operation
-        pattern = rb"\x04\x00\x00\x00\xFF\xFF\xFF\xFF\K(?P<length>.{2})\x00\x00"
-        operation_match = regex.search(pattern, data, pos=pos)
+        operation_match = regex.search(cls.CHAT_OPERATION_PATTERN, data, pos=pos)
 
         # Did not find a chat operation
         if operation_match is None:
@@ -154,8 +158,7 @@ class RecFile:
             return drop_operation()
 
         # Try to find player substitution string in chat message
-        pattern = rb"<player_id,(?P<player_id>.),0>"
-        system_match = regex.search(pattern, payload_bytes)
+        system_match = regex.search(cls.SYSTEM_CHAT_PATTERN, payload_bytes)
         is_player_message = False
 
         if system_match is None:
@@ -167,7 +170,7 @@ class RecFile:
         # Anonymize player message
         if is_player_message and not remove_player_chat:
             # Replace player name in messageAGP part with anonymized name
-            changed_payload_bytes = regex.sub(rb"\"messageAGP\":\"@#\d\d(?:\  <platform_icon_.+>  )?\K(?P<name>.+)\: ", f"player {player_id}: ".encode(), payload_bytes)
+            changed_payload_bytes = regex.sub(cls.CHAT_MESSAGE_PATTERN, f"player {player_id}: ".encode(), payload_bytes)
             set_length(len(changed_payload_bytes))
             set_payload(changed_payload_bytes)
 
@@ -195,9 +198,6 @@ class RecFile:
         Raises:
             Exception: When the elo block could not be found
         """
-        # Wild guess for now
-        MAX_POSTGAME_SIZE = 255
-        anonymized_data = bytearray(self.operations)
         # Operation 6 = Postgame. Pattern:
         # WorldTime(u32, u32),
         # Leaderboards(u32, u32, {
@@ -205,12 +205,14 @@ class RecFile:
         # }
         pattern = rb"\x06\x00\x00\x00.{22,255}" + struct.pack("<I", num_players) + rb"\K[\x00-\x07]\x00\x00\x00"
         offset = struct.calcsize("<III")
-        pos = len(self.operations) - MAX_POSTGAME_SIZE
+        pos = len(self.operations) - 255  # 255 is a wild guess for max size
         endpos = len(self.operations) - 8 - (num_players * offset)
+
+        anonymized_data = bytearray(self.operations)
         match = regex.search(pattern, anonymized_data, pos=pos, endpos=endpos)
 
         if match is None:
-            raise Exception("Could not anonymize elo")
+            raise AnonymizationError("Could not anonymize elo")
 
         # From this point we seem to have a structure that follows this pattern for each player
         # u32 player_id

@@ -6,12 +6,17 @@ import struct
 
 import regex
 
+from errors import PlayerAnonymizationError, PlayerCountError
+
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class Header:
+    SEPARATOR_PATTERN = regex.compile(b"\xA3\x5F\x02\x00" * 2)
+    PLAYER_PATTERN = regex.compile(rb"\x60\x0A\K(?P<length>[\x01-\xFF])\x00(?P<name>.{0,255}?)\x02\x00\x00\x00(?P<profile_id>.{4})")
+
     rec_version: bytes  # null string
     checker: float  # f32
     version_minor: int  # u16
@@ -109,12 +114,10 @@ class Header:
         #   u32 treaty_length;
         #   u32 population_limit;
         #   u32 n_players;
-        separator_pattern = b"\xA3\x5F\x02\x00"
-        pattern = separator_pattern + separator_pattern
-        match = regex.search(pattern, self.data)
+        match = regex.search(self.SEPARATOR_PATTERN, self.data)
 
         if match is None:
-            raise Exception("Failed to get player count")
+            raise PlayerCountError("Failed to get player count")
 
         _, _, _, player_count = struct.unpack_from("<fIII", self.data, match.end())
 
@@ -136,9 +139,9 @@ class Header:
             offset = self._anonymize_next_player(i, offset, anonymized_data)
 
             if offset == -1:
-                raise Exception(f"Could not anonymize player {i}")
+                raise PlayerAnonymizationError(f"Could not anonymize player {i}")
 
-        self.data = bytes(anonymized_data)
+        self.data = anonymized_data
 
     @classmethod
     def _anonymize_next_player(cls, id: int, offset: int, data: bytearray) -> int:
@@ -153,8 +156,7 @@ class Header:
         Returns:
             int: The end position of the anonymized player in the lobby settings or -1 if no player was found
         """
-        pattern = rb"\x60\x0A\K(?P<length>[\x01-\xFF])\x00(?P<name>.{0,255}?)\x02\x00\x00\x00(?P<profile_id>.{4})"
-        match = regex.search(pattern, data, pos=offset, endpos=int("0x330", 0))
+        match = regex.search(cls.PLAYER_PATTERN, data, pos=offset, endpos=0x330)
 
         if match:
             match_start = match.start()
