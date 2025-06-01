@@ -4,9 +4,9 @@ from typing import Self
 from dataclasses import dataclass, fields
 import regex
 
-from errors import AnonymizationError
-from header import Header
-from operations import Operation
+from aoe_rec_tools.errors import AnonymizationError
+from aoe_rec_tools.header import Header
+from aoe_rec_tools.operations import Operation, PostgameOperation
 
 
 logger = logging.getLogger(__name__)
@@ -86,7 +86,9 @@ class RecFile:
             file.write(compressed_header)
             file.write(struct.pack("<I", self.log_version))
             file.write(self.meta.pack())
-            file.write(b"".join([x.pack() for x in self.operations]))
+
+            for operation in self.operations:
+                file.write(operation.pack())
 
     def anonymize(self, remove_system_chat: bool, remove_player_chat: bool) -> None:
         """Fully anonymize player data in the rec file. This includes the player profiles and names, chat messages and elo.
@@ -98,7 +100,7 @@ class RecFile:
 
         self._anonymize_players(num_players)
         self._anonymize_chat(remove_system_chat, remove_player_chat)
-        self._anonymize_elo(num_players)
+        self._anonymize_elo()
 
     def _anonymize_players(self, num_players: int) -> None:
         """Anonymizes the player names in the rec file."""
@@ -184,7 +186,7 @@ class RecFile:
 
         return operation_start + 1
 
-    def _anonymize_elo(self, num_players: int) -> None:
+    def _anonymize_elo(self) -> None:
         """Anonymize players elo in the rec file. Capture Age displays this data.
 
         Args:
@@ -193,34 +195,15 @@ class RecFile:
         Raises:
             Exception: When the elo block could not be found
         """
+        postgame_operation: PostgameOperation = self.operations[-1]
+        leaderboard_block = [x for x in postgame_operation.blocks if isinstance(x, PostgameOperation.LeaderboardsBlock)][0]
 
-        # Operation 6 = Postgame. Pattern:
-        # WorldTime(u32, u32),
-        # Leaderboards(u32, u32, {
-        #    u32, u16, u32(num_players), {Players}
-        # }
-        postgame_operation = self.operations[-1]
-        data = bytearray(postgame_operation.data)
-        pattern = struct.pack("<I", num_players) + rb"\K[\x00-\x07]\x00\x00\x00"
-        offset = struct.calcsize("<III")
-        endpos = len(data) - 8 - (num_players * offset)
-
-        match = regex.search(pattern, data, endpos=endpos)
-
-        if match is None:
+        if leaderboard_block is None:
             raise AnonymizationError("Could not anonymize elo")
 
-        # From this point we seem to have a structure that follows this pattern for each player
-        # u32 player_id
-        # u32 rank
-        # u32 rating
-        base_pos = match.start()
-        for i in range(num_players):
-            block_pos = i * offset + base_pos
-            player_id, unknown, rating = struct.unpack_from("<III", data, block_pos)
-
-            fake_rating = 3000
-            struct.pack_into("<III", data, block_pos, player_id, unknown, fake_rating)
-            logger.info(f"Rating for player {player_id + 1}({rating}) set to: {fake_rating}")
-
-        postgame_operation.data = data
+        for leaderboard in leaderboard_block.leaderboards:
+            for player in leaderboard.players:
+                fake_rating = 3000
+                logger.info(f"Rating for player {player.player_id + 1}({player.rating}) set to: {fake_rating}")
+                player.rank = 1
+                player.rating = fake_rating

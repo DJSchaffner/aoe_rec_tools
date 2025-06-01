@@ -6,7 +6,7 @@ import struct
 
 import regex
 
-from errors import PlayerAnonymizationError, PlayerCountError
+from aoe_rec_tools.errors import PlayerAnonymizationError, PlayerCountError
 
 
 logger = logging.getLogger(__name__)
@@ -98,7 +98,7 @@ class Header:
             self.data
         ]
 
-        return zlib.compress(b"".join(parts))[2:-4]
+        return zlib.compress(b"".join(parts), level=1)[2:-4]
 
     def get_player_count(self) -> int:
         """Get the player count of the rec file.

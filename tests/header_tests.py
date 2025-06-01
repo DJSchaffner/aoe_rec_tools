@@ -1,6 +1,6 @@
 import unittest
 
-from src.header import Header
+from aoe_rec_tools.header import Header
 from sample_data import get_header_compressed, get_header_fabricated, get_header_uncompressed
 
 

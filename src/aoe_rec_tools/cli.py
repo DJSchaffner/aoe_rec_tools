@@ -2,7 +2,7 @@ import logging
 import time
 import click
 
-from rec_file import RecFile
+from aoe_rec_tools.rec_file import RecFile
 
 
 __version__ = "0.1"

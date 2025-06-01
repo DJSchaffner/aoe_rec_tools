@@ -8,10 +8,13 @@
       "name": "Python: Current File",
       "type": "debugpy",
       "request": "launch",
-      "program": "src/aoe_rec_tools.py",
-      "args": ["-i", "test/files/tg_unicode_chat.aoe2record", "--debug", "--profile"],
+      "program": "src/aoe_rec_tools/cli.py",
+      "args": ["-i", "tests/files/1v1_default.aoe2record", "--debug", "--profile"],
       "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal"
+      "console": "integratedTerminal",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      }
     }
   ]
 }
