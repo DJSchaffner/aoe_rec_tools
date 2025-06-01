@@ -27,14 +27,14 @@ install:
 	$(PIP) install -r requirements.txt
 
 lint:
-	$(FLAKE8) src/
+	$(FLAKE8) src/aoe_rec_tools/
 
 test:
-	$(PYTHON) -m unittest discover test -p "*_tests.py"
+	PYTHONPATH=src $(PYTHON) -m unittest discover tests -p "*_tests.py"
 
 clean:
 	rm -rf *.pyc __pycache__ build/ dist/
 
 build: clean
 	$(PYTHON) -m pip install pyinstaller
-	$(PYTHON) -m PyInstaller --noconfirm --onefile --name "aoe_rec_tools" src/aoe_rec_tools.py
+	$(PYTHON) -m PyInstaller --noconfirm --onefile --name "aoe_rec_tools" src/aoe_rec_tools/cli.py
