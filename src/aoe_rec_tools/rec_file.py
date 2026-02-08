@@ -102,6 +102,15 @@ class RecFile:
         self._anonymize_chat(remove_system_chat, remove_player_chat)
         self._anonymize_elo()
 
+    def extract_chat(self) -> str:
+        """Extract the chat log of the rec file.
+
+        Returns:
+            str: The extracted chat as single string.
+        """
+        # TODO
+        pass
+
     def _anonymize_players(self, num_players: int) -> None:
         """Anonymizes the player names in the rec file."""
         self.header.anonymize_players(num_players)
